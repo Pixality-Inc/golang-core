@@ -7,8 +7,7 @@ import (
 	"strings"
 	"time"
 
-	uuid "github.com/satori/go.uuid"
-
+	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 )
 
@@ -50,7 +49,7 @@ func ParseUint64(value string) (uint64, error) {
 }
 
 func ParseUUID(value string) (uuid.UUID, error) {
-	return uuid.FromString(value)
+	return uuid.Parse(value)
 }
 
 func ParseUnixTime(value string) (time.Time, error) {

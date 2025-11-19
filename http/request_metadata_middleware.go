@@ -3,7 +3,7 @@ package http
 import (
 	"github.com/pixality-inc/golang-core/logger"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 	"github.com/valyala/fasthttp"
 )
 
@@ -46,7 +46,7 @@ func (m *RequestMetadataMiddleware) handle(ctx *fasthttp.RequestCtx, next fastht
 	cfConnectingIp := string(ctx.Request.Header.Peek("cf-connecting-ip"))
 
 	if requestId == "" {
-		requestId = uuid.NewV4().String()
+		requestId = uuid.New().String()
 	}
 
 	requestMetadata := &RequestMetadata{

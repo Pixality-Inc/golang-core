@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/pixality-inc/golang-core/json"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/encoding/wkb"
 	"github.com/paulmach/orb/encoding/wkt"
-	uuid "github.com/satori/go.uuid"
 )
 
 // Errors
@@ -48,7 +48,7 @@ func ScanTypedIdUuid[T Identifier](
 		return fmt.Errorf("%w: got %T", ErrStringExpected, val)
 	}
 
-	uuidValue, err := uuid.FromString(val)
+	uuidValue, err := uuid.Parse(val)
 	if err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrParseUuid, val, err)
 	}

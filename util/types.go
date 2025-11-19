@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/goccy/go-json"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
+	"github.com/pixality-inc/golang-core/json"
 )
 
 var (
@@ -23,7 +23,7 @@ func UnmarshalJsonToId[T any](
 
 	err := json.Unmarshal(data, &stringValue)
 	if err == nil {
-		uuidValue, err := uuid.FromString(stringValue)
+		uuidValue, err := uuid.Parse(stringValue)
 		if err != nil {
 			return defaultValue, fmt.Errorf("%w: %s", errors.Join(ErrUnmarshalString, err), data)
 		}

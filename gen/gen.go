@@ -750,7 +750,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 
 		if slices.Contains(model.attributes, fieldAttributeUuid) {
 			if bytes.Contains(modelGen, []byte("uuid.")) {
-				imports = append(imports, []string{"uuid", "github.com/satori/go.uuid"})
+				imports = append(imports, []string{"", "github.com/google/uuid"})
 			}
 		}
 

@@ -3,8 +3,8 @@ package util
 import (
 	"testing"
 
-	"github.com/goccy/go-json"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
+	"github.com/pixality-inc/golang-core/json"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +49,7 @@ func TestUnmarshalJsonToId(t *testing.T) {
 		{
 			name:    "string",
 			data:    []byte(`"dc580a7d-7ab6-4f27-9f1e-06941c7c13c6"`),
-			want:    testIdType(uuid.FromStringOrNil("dc580a7d-7ab6-4f27-9f1e-06941c7c13c6")),
+			want:    testIdType(uuid.MustParse("dc580a7d-7ab6-4f27-9f1e-06941c7c13c6")),
 			wantErr: nil,
 		},
 		{

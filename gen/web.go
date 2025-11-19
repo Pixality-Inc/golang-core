@@ -107,7 +107,7 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 		controllerImports = append(controllerImports, []string{"", "context"})
 
 		if hasUuid {
-			controllerImports = append(controllerImports, []string{"uuid", "github.com/satori/go.uuid"})
+			controllerImports = append(controllerImports, []string{"", "github.com/google/uuid"})
 		}
 
 		if hasTime {
