@@ -1,5 +1,5 @@
 .PHONY: all
-all: lint test
+all: dep lint test
 
 .PHONY: dep
 dep:

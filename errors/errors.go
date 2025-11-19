@@ -1,7 +1,14 @@
 package errors
 
 import (
-	githubErrors "github.com/pkg/errors"
+	goErrors "errors"
+)
+
+var (
+	Join   = goErrors.Join
+	Unwrap = goErrors.Unwrap
+	Is     = goErrors.Is
+	As     = goErrors.As
 )
 
 type Code string
@@ -55,5 +62,5 @@ func (e *ImplError) Unwrap() error {
 }
 
 func (e *ImplError) Throw() error {
-	return githubErrors.WithStack(e)
+	return e
 }
