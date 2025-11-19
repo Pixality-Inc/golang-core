@@ -1,0 +1,5 @@
+example:
+  hello: world
+  foo: 420
+  bar: 3.14
+  baz: true
