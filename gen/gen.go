@@ -737,7 +737,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	{
 		imports := [][]string{
 			{"", "github.com/Masterminds/squirrel"},
-			{"", g.config.ProjectId + "/pkg/postgres"},
+			{"", "github.com/pixality-inc/golang-core/postgres"},
 		}
 
 		for _, imp := range sourceConfig.DaoImports {
@@ -800,8 +800,8 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 			{"", "context"},
 			{"", "fmt"},
 			{"", "github.com/Masterminds/squirrel"},
-			{"", g.config.ProjectId + "/pkg/util"},
-			{"", g.config.ProjectId + "/pkg/postgres"},
+			{"", "github.com/pixality-inc/golang-core/util"},
+			{"", "github.com/pixality-inc/golang-core/postgres"},
 		}
 
 		for _, imp := range sourceConfig.Imports {
