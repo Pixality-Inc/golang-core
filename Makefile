@@ -1,5 +1,9 @@
 .PHONY: all
-all: dep lint test
+all: dep gen lint test
+
+.PHONY: gen
+gen:
+	go generate ./...
 
 .PHONY: dep
 dep:

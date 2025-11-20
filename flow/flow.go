@@ -337,7 +337,7 @@ func (f *Impl) getActionEnv(ctx context.Context, env *Env, action Action) (map[s
 	switch {
 	case hasEnv:
 		for envName, envValue := range action.Env {
-			templateName := "actions." + action.Name + "." + envName
+			templateName := "action." + action.Name + "." + envName
 
 			evalResult, err := f.evalTemplate(ctx, env, templateName, envValue)
 			if err != nil {
@@ -348,7 +348,7 @@ func (f *Impl) getActionEnv(ctx context.Context, env *Env, action Action) (map[s
 		}
 
 	case hasEnvTemplate:
-		templateName := "actions." + action.Name
+		templateName := "action." + action.Name + ".env_template"
 
 		evalResult, err := f.evalTemplate(ctx, env, templateName, action.EnvTemplate)
 		if err != nil {
@@ -366,7 +366,7 @@ func (f *Impl) getActionEnv(ctx context.Context, env *Env, action Action) (map[s
 		}
 
 	case hasEnvScript:
-		templateName := "actions." + action.Name
+		templateName := "action." + action.Name + ".env_script"
 
 		evalResult, err := f.evalScript(ctx, env, templateName, action.EnvScript)
 		if err != nil {
@@ -398,7 +398,7 @@ func (f *Impl) getActionArgs(ctx context.Context, env *Env, action Action) ([]st
 	switch {
 	case hasArgs:
 		for argIndex, arg := range action.Args {
-			templateName := "actions." + action.Name + "." + strconv.Itoa(argIndex)
+			templateName := "action." + action.Name + "." + strconv.Itoa(argIndex)
 
 			evalResult, err := f.evalTemplate(ctx, env, templateName, arg)
 			if err != nil {
@@ -409,7 +409,7 @@ func (f *Impl) getActionArgs(ctx context.Context, env *Env, action Action) ([]st
 		}
 
 	case hasArgsTemplate:
-		templateName := "actions." + action.Name
+		templateName := "action." + action.Name + ".args_template"
 
 		evalResult, err := f.evalTemplate(ctx, env, templateName, action.ArgsTemplate)
 		if err != nil {
@@ -424,7 +424,7 @@ func (f *Impl) getActionArgs(ctx context.Context, env *Env, action Action) ([]st
 		args = append(args, argsResult...)
 
 	case hasArgsScript:
-		templateName := "actions." + action.Name
+		templateName := "action." + action.Name + ".args_script"
 
 		evalResult, err := f.evalScript(ctx, env, templateName, action.ArgsScript)
 		if err != nil {
@@ -439,14 +439,14 @@ func (f *Impl) getActionArgs(ctx context.Context, env *Env, action Action) ([]st
 		args = append(args, argsResult...)
 	}
 
-	filteredArgs := make([]string, 0)
+	filteredArgs := make([]string, 0, len(args))
 
 	for _, arg := range args {
-		filteredArg := strings.TrimSpace(arg)
-
-		if filteredArg != "" {
-			filteredArgs = append(filteredArgs, filteredArg)
+		if arg == "" {
+			continue
 		}
+
+		filteredArgs = append(filteredArgs, arg)
 	}
 
 	return filteredArgs, nil
@@ -501,6 +501,10 @@ func (f *Impl) runActionScriptFile(ctx context.Context, env *Env, action Action)
 }
 
 func (f *Impl) runActionScriptCode(ctx context.Context, env *Env, _ Action, name string, code string) (*ActionResponse, error) {
+	if f.scriptDriver == nil {
+		return nil, ErrNoScriptDriver
+	}
+
 	evalResult, err := f.evalScript(ctx, env, name, code)
 	if err != nil {
 		return nil, fmt.Errorf("eval script %s: %w", name, err)
@@ -515,10 +519,18 @@ func (f *Impl) runActionScriptCode(ctx context.Context, env *Env, _ Action, name
 }
 
 func (f *Impl) evalTemplate(ctx context.Context, env *Env, name string, source string) (string, error) {
+	if f.templateDriver == nil {
+		return source, nil
+	}
+
 	return f.templateDriver.Execute(ctx, env, name, source)
 }
 
 //nolint:unused
 func (f *Impl) evalScript(ctx context.Context, env *Env, name string, source string) (any, error) {
+	if f.scriptDriver == nil {
+		return nil, ErrNoScriptDriver
+	}
+
 	return f.scriptDriver.Execute(ctx, env, name, source)
 }

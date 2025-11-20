@@ -2,6 +2,7 @@ package flow
 
 import "context"
 
+//go:generate mockgen -destination mocks/script_driver_gen.go -source script_driver.go
 type ScriptDriver interface {
 	Execute(ctx context.Context, env *Env, name string, script string) (any, error)
 	ValueToString(value any) (string, error)

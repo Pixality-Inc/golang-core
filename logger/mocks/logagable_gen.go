@@ -11,9 +11,9 @@ package mock_logger
 
 import (
 	context "context"
-	logger "github.com/pixality-inc/golang-core/logger"
 	reflect "reflect"
 
+	logger "github.com/pixality-inc/golang-core/logger"
 	gomock "go.uber.org/mock/gomock"
 )
 
