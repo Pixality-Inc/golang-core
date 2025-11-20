@@ -108,7 +108,7 @@ func TestFormatDuration(t *testing.T) {
 		{
 			name:     "zero duration",
 			duration: 0,
-			want:     "",
+			want:     "0ms",
 		},
 		{
 			name:     "only milliseconds",
