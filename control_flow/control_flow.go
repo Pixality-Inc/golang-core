@@ -60,6 +60,10 @@ func (c *ControlFlowImpl) RegisterClosableWithErrorService(name string, closer C
 	c.RegisterShutdownService(name, NewClosableWithError(closer))
 }
 
+func (c *ControlFlowImpl) RegisterStoppableService(name string, stoppable Stoppable) {
+	c.RegisterShutdownService(name, NewStoppable(stoppable))
+}
+
 func (c *ControlFlowImpl) RegisterShutdownServiceWithName(service ShutdownWithName) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

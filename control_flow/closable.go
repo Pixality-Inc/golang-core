@@ -37,3 +37,23 @@ func NewClosableWithError(service ClosableWithError) *ClosableWithErrorImpl {
 func (c *ClosableWithErrorImpl) Stop() error {
 	return c.service.Close()
 }
+
+type Stoppable interface {
+	Stop()
+}
+
+type StoppableImpl struct {
+	service Stoppable
+}
+
+func NewStoppable(service Stoppable) *StoppableImpl {
+	return &StoppableImpl{
+		service: service,
+	}
+}
+
+func (s *StoppableImpl) Stop() error {
+	s.service.Stop()
+
+	return nil
+}
