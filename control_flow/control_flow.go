@@ -22,6 +22,7 @@ type ShutdownWithName interface {
 type ControlFlow interface {
 	RegisterClosableService(name string, closer Closable)
 	RegisterClosableWithErrorService(name string, closer ClosableWithError)
+	RegisterStoppableService(name string, stoppable Stoppable)
 	RegisterShutdownService(name string, service Shutdown)
 	RegisterShutdownServiceWithName(service ShutdownWithName)
 	Context() context.Context
