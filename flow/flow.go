@@ -501,6 +501,10 @@ func (f *Impl) runActionScriptFile(ctx context.Context, env *Env, action Action)
 }
 
 func (f *Impl) runActionScriptCode(ctx context.Context, env *Env, _ Action, name string, code string) (*ActionResponse, error) {
+	if f.scriptDriver == nil {
+		return nil, ErrNoScriptDriver
+	}
+
 	evalResult, err := f.evalScript(ctx, env, name, code)
 	if err != nil {
 		return nil, fmt.Errorf("eval script %s: %w", name, err)
@@ -515,10 +519,18 @@ func (f *Impl) runActionScriptCode(ctx context.Context, env *Env, _ Action, name
 }
 
 func (f *Impl) evalTemplate(ctx context.Context, env *Env, name string, source string) (string, error) {
+	if f.templateDriver == nil {
+		return source, nil
+	}
+
 	return f.templateDriver.Execute(ctx, env, name, source)
 }
 
 //nolint:unused
 func (f *Impl) evalScript(ctx context.Context, env *Env, name string, source string) (any, error) {
+	if f.scriptDriver == nil {
+		return nil, ErrNoScriptDriver
+	}
+
 	return f.scriptDriver.Execute(ctx, env, name, source)
 }

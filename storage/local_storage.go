@@ -7,6 +7,19 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 )
 
+//go:generate mockgen -destination mocks/local_storage_gen.go -source local_storage.go
+type LocalStorage interface {
+	Storage
+
+	LocalPath(ctx context.Context, path string) (string, error)
+}
+
+type LocalStorageProvider interface {
+	Provider
+
+	LocalPath(ctx context.Context, path string) (string, error)
+}
+
 type LocalStorageImpl struct {
 	Storage
 

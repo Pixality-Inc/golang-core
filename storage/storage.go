@@ -15,12 +15,6 @@ type Provider interface {
 	Close() error
 }
 
-type LocalStorageProvider interface {
-	Provider
-
-	LocalPath(ctx context.Context, path string) (string, error)
-}
-
 type UrlProvider interface {
 	GetPublicUrl(ctx context.Context, path string) (string, error)
 }
@@ -37,10 +31,4 @@ type Storage interface {
 	Compose(ctx context.Context, path string, chunks []string) error
 	GetPublicUrl(ctx context.Context, path string) (string, error)
 	Close() error
-}
-
-type LocalStorage interface {
-	Storage
-
-	LocalPath(ctx context.Context, path string) (string, error)
 }
