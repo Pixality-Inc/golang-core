@@ -9,4 +9,5 @@ type ScriptDriver interface {
 	ValueToBool(value any) (bool, error)
 	ValueToStringSlice(value any) ([]string, error)
 	ValueToMapStringString(value any) (map[string]string, error)
+	AnyToValue(value any) (any, error)
 }

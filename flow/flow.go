@@ -33,6 +33,7 @@ type Flow interface {
 	ValueToBool(value any) (bool, error)
 	ValueToStringSlice(value any) ([]string, error)
 	ValueToMapStringString(value any) (map[string]string, error)
+	AnyToValue(value any) (any, error)
 }
 
 type Impl struct {
@@ -123,6 +124,10 @@ func (f *Impl) ValueToStringSlice(value any) ([]string, error) {
 
 func (f *Impl) ValueToMapStringString(value any) (map[string]string, error) {
 	return f.scriptDriver.ValueToMapStringString(value)
+}
+
+func (f *Impl) AnyToValue(value any) (any, error) {
+	return f.scriptDriver.AnyToValue(value)
 }
 
 func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {

@@ -41,6 +41,21 @@ func (m *MockScriptDriver) EXPECT() *MockScriptDriverMockRecorder {
 	return m.recorder
 }
 
+// AnyToValue mocks base method.
+func (m *MockScriptDriver) AnyToValue(value any) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnyToValue", value)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AnyToValue indicates an expected call of AnyToValue.
+func (mr *MockScriptDriverMockRecorder) AnyToValue(value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnyToValue", reflect.TypeOf((*MockScriptDriver)(nil).AnyToValue), value)
+}
+
 // Execute mocks base method.
 func (m *MockScriptDriver) Execute(ctx context.Context, env *flow.Env, name, script string) (any, error) {
 	m.ctrl.T.Helper()
