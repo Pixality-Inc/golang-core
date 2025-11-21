@@ -128,3 +128,7 @@ func (d *Goja) AnyToValue(value any) (any, error) {
 func (d *Goja) NewError(err error) any {
 	return d.js.NewGoError(err)
 }
+
+func (d *Goja) Throw(err error) {
+	panic(d.NewError(err))
+}

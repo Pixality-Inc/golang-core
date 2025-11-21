@@ -35,6 +35,7 @@ type Flow interface {
 	ValueToMapStringString(value any) (map[string]string, error)
 	AnyToValue(value any) (any, error)
 	NewError(err error) any
+	Throw(err error)
 }
 
 type Impl struct {
@@ -133,6 +134,10 @@ func (f *Impl) AnyToValue(value any) (any, error) {
 
 func (f *Impl) NewError(err error) any {
 	return f.scriptDriver.NewError(err)
+}
+
+func (f *Impl) Throw(err error) {
+	f.scriptDriver.Throw(err)
 }
 
 func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {

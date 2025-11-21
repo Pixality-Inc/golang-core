@@ -85,6 +85,18 @@ func (mr *MockScriptDriverMockRecorder) NewError(err any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewError", reflect.TypeOf((*MockScriptDriver)(nil).NewError), err)
 }
 
+// Throw mocks base method.
+func (m *MockScriptDriver) Throw(err error) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Throw", err)
+}
+
+// Throw indicates an expected call of Throw.
+func (mr *MockScriptDriverMockRecorder) Throw(err any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Throw", reflect.TypeOf((*MockScriptDriver)(nil).Throw), err)
+}
+
 // ValueToBool mocks base method.
 func (m *MockScriptDriver) ValueToBool(value any) (bool, error) {
 	m.ctrl.T.Helper()
