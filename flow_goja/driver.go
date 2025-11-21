@@ -124,3 +124,7 @@ func (d *Goja) ValueToMapStringString(value any) (map[string]string, error) {
 func (d *Goja) AnyToValue(value any) (any, error) {
 	return d.js.ToValue(value), nil
 }
+
+func (d *Goja) NewError(err error) any {
+	return d.js.NewGoError(err)
+}

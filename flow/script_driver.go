@@ -10,4 +10,5 @@ type ScriptDriver interface {
 	ValueToStringSlice(value any) ([]string, error)
 	ValueToMapStringString(value any) (map[string]string, error)
 	AnyToValue(value any) (any, error)
+	NewError(err error) any
 }

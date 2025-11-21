@@ -71,6 +71,20 @@ func (mr *MockScriptDriverMockRecorder) Execute(ctx, env, name, script any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockScriptDriver)(nil).Execute), ctx, env, name, script)
 }
 
+// NewError mocks base method.
+func (m *MockScriptDriver) NewError(err error) any {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewError", err)
+	ret0, _ := ret[0].(any)
+	return ret0
+}
+
+// NewError indicates an expected call of NewError.
+func (mr *MockScriptDriverMockRecorder) NewError(err any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewError", reflect.TypeOf((*MockScriptDriver)(nil).NewError), err)
+}
+
 // ValueToBool mocks base method.
 func (m *MockScriptDriver) ValueToBool(value any) (bool, error) {
 	m.ctrl.T.Helper()
