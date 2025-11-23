@@ -94,7 +94,14 @@ func (p *OsProvider) ReadFile(ctx context.Context, path string) (io.ReadCloser, 
 }
 
 func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) error {
-	return util.ErrNotImplemented
+	if len(chunks) == 1 {
+		fullPath := p.getFullPath(path)
+		chunkFullPath := p.getFullPath(chunks[0])
+
+		return util.CopyFile(chunkFullPath, fullPath)
+	} else {
+		return util.ErrNotImplemented
+	}
 }
 
 func (p *OsProvider) Close() error {
