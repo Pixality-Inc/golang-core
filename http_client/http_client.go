@@ -1,15 +1,14 @@
 package http_client
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
-	"maps"
 	"net/http"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 
 	http2 "github.com/pixality-inc/golang-core/http"
 	"github.com/pixality-inc/golang-core/json"
@@ -24,100 +23,106 @@ var (
 )
 
 type Client interface {
-	Do(req *http.Request) (*http.Response, error)
-	Get(ctx context.Context, uri string, request *Request) (*Response, error)
-	Post(ctx context.Context, uri string, body *bytes.Buffer, request *Request) (*Response, error)
-	PostMultipart(ctx context.Context, uri string, formData *FormData, request *Request) (*Response, error)
+	Get(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Post(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Put(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Patch(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Delete(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Head(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Options(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+
+	Do(ctx context.Context, method, uri string, opts ...RequestOption) (*Response, error)
 }
 
 type ClientImpl struct {
 	log    logger.Loggable
 	config Config
-	client *http.Client
+	client *fasthttp.Client
 }
 
 func NewClientImpl(
 	log logger.Loggable,
 	config Config,
 ) *ClientImpl {
-	var transport *http.Transport
+	readTimeout := config.ReadTimeout()
+	if readTimeout == 0 {
+		readTimeout = config.Timeout()
+	}
+
+	writeTimeout := config.WriteTimeout()
+	if writeTimeout == 0 {
+		writeTimeout = config.Timeout()
+	}
+
+	client := &fasthttp.Client{
+		ReadTimeout:              readTimeout,
+		WriteTimeout:             writeTimeout,
+		MaxConnsPerHost:          config.MaxConnsPerHost(),
+		MaxIdleConnDuration:      config.MaxIdleConnDuration(),
+		MaxConnWaitTimeout:       config.MaxConnWaitTimeout(),
+		NoDefaultUserAgentHeader: false,
+		DisablePathNormalizing:   false,
+	}
 
 	if config.InsecureSkipVerify() {
-		transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: config.InsecureSkipVerify(), // nolint:gosec
-			},
+		client.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true, // nolint:gosec
 		}
-	} else {
-		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-		if !ok {
-			defaultTransport = &http.Transport{}
-		}
-
-		transport = defaultTransport.Clone()
 	}
 
 	return &ClientImpl{
 		log:    log,
 		config: config,
-		client: &http.Client{
-			Timeout:   config.Timeout(),
-			Transport: transport,
-		},
+		client: client,
 	}
 }
 
-func (c *ClientImpl) Do(req *http.Request) (*http.Response, error) {
-	return c.client.Do(req)
+func (c *ClientImpl) Get(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodGet, uri, opts...)
 }
 
-func (c *ClientImpl) Get(ctx context.Context, uri string, request *Request) (*Response, error) {
-	url := c.makeUrl(uri)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, bytes.NewBuffer(nil))
-	if err != nil {
-		return nil, err
-	}
-
-	c.applyRequest(ctx, req, request)
-
-	return c.do(req)
+func (c *ClientImpl) Post(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodPost, uri, opts...)
 }
 
-func (c *ClientImpl) Post(ctx context.Context, uri string, body *bytes.Buffer, request *Request) (*Response, error) {
-	url := c.makeUrl(uri)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
-	if err != nil {
-		return nil, err
-	}
-
-	c.applyRequest(ctx, req, request)
-
-	return c.do(req)
+func (c *ClientImpl) Put(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodPut, uri, opts...)
 }
 
-func (c *ClientImpl) PostMultipart(ctx context.Context, uri string, formData *FormData, request *Request) (*Response, error) {
-	if err := formData.Close(); err != nil {
-		return nil, err
+func (c *ClientImpl) Patch(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodPatch, uri, opts...)
+}
+
+func (c *ClientImpl) Delete(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodDelete, uri, opts...)
+}
+
+func (c *ClientImpl) Head(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodHead, uri, opts...)
+}
+
+func (c *ClientImpl) Options(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+	return c.Do(ctx, http.MethodOptions, uri, opts...)
+}
+
+func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...RequestOption) (*Response, error) {
+	cfg := applyOptions(opts...)
+
+	if c.config.RetryPolicy() != nil {
+		return c.doWithRetry(ctx, func() (*Response, error) {
+			return c.performRequest(ctx, method, uri, cfg)
+		})
 	}
 
-	url := c.makeUrl(uri)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, formData.Body())
-	if err != nil {
-		return nil, err
-	}
-
-	c.applyRequest(ctx, req, request)
-
-	req.Header.Set("Content-Type", formData.ContentType())
-
-	return c.do(req)
+	return c.performRequest(ctx, method, uri, cfg)
 }
 
 func (c *ClientImpl) makeUrl(uri string) string {
-	return c.config.BaseUrl() + uri
+	baseUrl := c.config.BaseUrl()
+	if baseUrl == "" {
+		return uri
+	}
+	return baseUrl + uri
 }
 
 func AsJson[OUT any](response *Response, defaultValue OUT) (*TypedResponse[OUT], error) {
@@ -135,137 +140,161 @@ func AsJson[OUT any](response *Response, defaultValue OUT) (*TypedResponse[OUT],
 	return typedResponse, nil
 }
 
-func (c *ClientImpl) applyRequest(ctx context.Context, httpRequest *http.Request, request *Request) {
+func (c *ClientImpl) applyRequestConfig(ctx context.Context, req *fasthttp.Request, cfg *RequestConfig) error {
 	if c.config.UseRequestId() {
 		if requestId, ok := ctx.Value(http2.RequestIdValueKey).(string); ok && requestId != "" {
-			httpRequest.Header.Set("X-Request-Id", requestId)
+			req.Header.Set("X-Request-Id", requestId)
 		}
 	}
 
 	for headerKey, headerValues := range c.config.BaseHeaders() {
 		for _, headerValue := range headerValues {
-			httpRequest.Header.Add(headerKey, headerValue)
+			req.Header.Add(headerKey, headerValue)
 		}
 	}
 
-	if request != nil {
-		c.addQueryParams(httpRequest, request.QueryParams)
-		c.addHeaders(httpRequest, request.Headers)
-	}
-}
-
-func (c *ClientImpl) addQueryParams(req *http.Request, queryParams QueryParams) {
-	query := req.URL.Query()
-
-	for k, v := range queryParams {
-		query.Add(k, v)
-	}
-
-	req.URL.RawQuery = query.Encode()
-}
-
-func (c *ClientImpl) addHeaders(req *http.Request, headers Headers) {
-	for headerKey, headerValues := range headers {
+	for headerKey, headerValues := range cfg.Headers {
 		for _, headerValue := range headerValues {
 			req.Header.Add(headerKey, headerValue)
 		}
 	}
+
+	if len(cfg.QueryParams) > 0 {
+		args := req.URI().QueryArgs()
+		for key, value := range cfg.QueryParams {
+			args.Add(key, value)
+		}
+	}
+
+	if cfg.FormData != nil {
+		formData, ok := cfg.FormData.(*FormData)
+		if !ok {
+			return errors.New("invalid form data type")
+		}
+
+		body, contentType, err := formData.build()
+		if err != nil {
+			return err
+		}
+
+		req.SetBody(body.Bytes())
+		req.Header.SetContentType(contentType)
+	} else if len(cfg.Body) > 0 {
+		req.SetBody(cfg.Body)
+
+		if len(req.Header.ContentType()) == 0 {
+			req.Header.SetContentType("application/json")
+		}
+	}
+
+	return nil
 }
 
-func (c *ClientImpl) performRequest(ctx context.Context, req *http.Request) (*Response, error) {
-	resp, err := c.client.Do(req)
-	if err != nil {
+func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg *RequestConfig) (*Response, error) {
+	requestTimeTracker := timetrack.New()
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	url := c.makeUrl(uri)
+	req.SetRequestURI(url)
+	req.Header.SetMethod(method)
+
+	if err := c.applyRequestConfig(ctx, req, cfg); err != nil {
 		return nil, err
 	}
 
-	defer func() {
-		if err = resp.Body.Close(); err != nil {
-			c.log.GetLogger(ctx).WithError(err).Error("failed to close response body")
-		}
-	}()
+	err := c.client.DoTimeout(req, resp, c.config.Timeout())
 
-	headers := make(Headers)
-
-	maps.Copy(headers, resp.Header)
-
-	response := &Response{
-		StatusCode: resp.StatusCode,
-		Headers:    headers,
-		Body:       nil,
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+	response := &Response{
+		StatusCode: resp.StatusCode(),
+		Headers:    make(Headers),
+		Body:       make([]byte, len(resp.Body())),
+	}
+
+	copy(response.Body, resp.Body())
+
+	resp.Header.VisitAll(func(key, value []byte) {
+		headerKey := string(key)
+		headerValue := string(value)
+		response.Headers[headerKey] = append(response.Headers[headerKey], headerValue)
+	})
+
+	c.logRequest(ctx, method, url, response, err, requestTimeTracker)
+
 	if err != nil {
 		return response, err
 	}
 
-	response.Body = respBody
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
-		return response, nil
-
-	case resp.StatusCode == http.StatusNotFound:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %s", ErrNotFound, respBody)
-		} else {
-			return response, ErrNotFound
-		}
-
-	case resp.StatusCode == http.StatusBadRequest:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %s", ErrBadRequest, respBody)
-		} else {
-			return response, ErrBadRequest
-		}
-
-	default:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %d: %s", ErrNon200HttpCode, resp.StatusCode, respBody)
-		} else {
-			return response, fmt.Errorf("%w: %d", ErrNon200HttpCode, resp.StatusCode)
-		}
-	}
+	return c.handleStatusCode(response)
 }
 
-func (c *ClientImpl) do(req *http.Request) (*Response, error) {
-	requestTimeTracker := timetrack.New()
-
-	ctx := req.Context()
+func (c *ClientImpl) logRequest(
+	ctx context.Context,
+	method, url string,
+	response *Response,
+	err error,
+	tracker *timetrack.TimeTracker,
+) {
+	tracker.Finish()
 
 	log := c.log.GetLogger(ctx)
 
-	requestUrl := req.URL.String()
-
-	baseLogger := func(isSuccess bool, response *Response) logger.Logger {
-		requestTimeTracker.Finish()
-
-		fields := map[string]any{
-			"logger":         "http_client",
-			"method":         req.Method,
-			"url":            requestUrl,
-			"success":        isSuccess,
-			"execution_time": requestTimeTracker.Duration().Milliseconds(),
-		}
-
-		if response != nil {
-			if value, ok := response.Headers["Content-Type"]; ok {
-				fields["content_type"] = strings.Join(value, ",")
-			}
-
-			fields["body_bytes"] = len(response.Body)
-			fields["status_code"] = response.StatusCode
-		}
-
-		return log.WithFields(fields)
+	fields := map[string]any{
+		"logger":         c.config.Name(),
+		"method":         method,
+		"url":            url,
+		"success":        err == nil && (response == nil || (response.StatusCode >= 200 && response.StatusCode < 300)),
+		"execution_time": tracker.Duration().Milliseconds(),
 	}
 
-	response, err := c.performRequest(ctx, req)
+	if response != nil {
+		if value, ok := response.Headers["Content-Type"]; ok {
+			fields["content_type"] = strings.Join(value, ",")
+		}
+
+		fields["body_bytes"] = len(response.Body)
+		fields["status_code"] = response.StatusCode
+	}
+
+	logWithFields := log.WithFields(fields)
+
 	if err != nil {
-		baseLogger(false, response).WithError(err).Error(requestUrl)
+		logWithFields.WithError(err).Error(url)
+	} else if response != nil && (response.StatusCode < 200 || response.StatusCode >= 300) {
+		logWithFields.Warn(url)
 	} else {
-		baseLogger(true, response).Debug(requestUrl)
+		logWithFields.Debug(url)
 	}
+}
 
-	return response, err
+func (c *ClientImpl) handleStatusCode(response *Response) (*Response, error) {
+	switch {
+	case response.StatusCode >= 200 && response.StatusCode <= 299:
+		return response, nil
+
+	case response.StatusCode == http.StatusNotFound:
+		if len(response.Body) > 0 {
+			return response, fmt.Errorf("%w: %s", ErrNotFound, response.Body)
+		}
+		return response, ErrNotFound
+
+	case response.StatusCode == http.StatusBadRequest:
+		if len(response.Body) > 0 {
+			return response, fmt.Errorf("%w: %s", ErrBadRequest, response.Body)
+		}
+		return response, ErrBadRequest
+
+	default:
+		if len(response.Body) > 0 {
+			return response, fmt.Errorf("%w: %d: %s", ErrNon200HttpCode, response.StatusCode, response.Body)
+		}
+		return response, fmt.Errorf("%w: %d", ErrNon200HttpCode, response.StatusCode)
+	}
 }

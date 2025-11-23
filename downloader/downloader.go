@@ -14,7 +14,7 @@ type Downloader interface {
 
 type Impl struct {
 	log  logger.Loggable
-	http *http2.ClientImpl
+	http http2.Client
 }
 
 func NewDownloader(config http2.Config) Downloader {
@@ -31,7 +31,7 @@ func (c *Impl) Download(ctx context.Context, url string) ([]byte, error) {
 
 	log.Infof("Downloading from '%s'", url)
 
-	response, err := c.http.Get(ctx, url, nil)
+	response, err := c.http.Get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
