@@ -3,11 +3,12 @@ package http_client
 import (
 	"bytes"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/textproto"
 )
 
-type FormDataInterface interface {
+type FormData interface {
 	AddField(name string, value string) error
 	AddFields(fields FormFields) error
 	AddFile(fieldName string, fileName string, contentType string, body io.Reader) error
@@ -20,7 +21,7 @@ type formFile struct {
 	content     []byte
 }
 
-type FormData struct {
+type FormDataImpl struct {
 	fields            map[string]string
 	files             []formFile
 	cachedBody        *bytes.Buffer
@@ -28,26 +29,26 @@ type FormData struct {
 	built             bool
 }
 
-func NewFormData() *FormData {
-	return &FormData{
+func NewFormDataImpl() *FormDataImpl {
+	return &FormDataImpl{
 		fields: make(map[string]string),
 		files:  make([]formFile, 0),
 	}
 }
 
-func (f *FormData) AddField(name string, value string) error {
+func (f *FormDataImpl) AddField(name string, value string) error {
 	f.fields[name] = value
+
 	return nil
 }
 
-func (f *FormData) AddFields(fields FormFields) error {
-	for k, v := range fields {
-		f.fields[k] = v
-	}
+func (f *FormDataImpl) AddFields(fields FormFields) error {
+	maps.Copy(f.fields, fields)
+
 	return nil
 }
 
-func (f *FormData) AddFile(fieldName string, fileName string, contentType string, body io.Reader) error {
+func (f *FormDataImpl) AddFile(fieldName string, fileName string, contentType string, body io.Reader) error {
 	content, err := io.ReadAll(body)
 	if err != nil {
 		return err
@@ -63,7 +64,11 @@ func (f *FormData) AddFile(fieldName string, fileName string, contentType string
 	return nil
 }
 
-func (f *FormData) build() (*bytes.Buffer, string, error) {
+func (f *FormDataImpl) Build() (*bytes.Buffer, string, error) {
+	return f.build()
+}
+
+func (f *FormDataImpl) build() (*bytes.Buffer, string, error) {
 	if f.built {
 		return f.cachedBody, f.cachedContentType, nil
 	}
@@ -101,8 +106,4 @@ func (f *FormData) build() (*bytes.Buffer, string, error) {
 	f.built = true
 
 	return f.cachedBody, f.cachedContentType, nil
-}
-
-func (f *FormData) Build() (*bytes.Buffer, string, error) {
-	return f.build()
 }

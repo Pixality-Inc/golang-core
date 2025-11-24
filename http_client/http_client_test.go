@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pixality-inc/golang-core/logger"
+	"github.com/pixality-inc/golang-core/retry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,7 @@ type testConfig struct {
 	insecureSkipVerify bool
 	baseHeaders        Headers
 	useRequestId       bool
-	RetryPolicyValue   *RetryPolicy
+	RetryPolicyValue   retry.Policy
 }
 
 func (c *testConfig) BaseUrl() string                    { return c.baseUrl }
@@ -36,7 +37,18 @@ func (c *testConfig) MaxIdleConnDuration() time.Duration { return DefaultMaxIdle
 func (c *testConfig) ReadTimeout() time.Duration         { return c.timeout }
 func (c *testConfig) WriteTimeout() time.Duration        { return c.timeout }
 func (c *testConfig) MaxConnWaitTimeout() time.Duration  { return 0 }
-func (c *testConfig) RetryPolicy() *RetryPolicy          { return c.RetryPolicyValue }
+func (c *testConfig) RetryPolicy() retry.Policy          { return c.RetryPolicyValue }
+func (c *testConfig) ReadBufferSize() int                { return DefaultReadBufferSize }
+func (c *testConfig) WriteBufferSize() int               { return DefaultWriteBufferSize }
+func (c *testConfig) MaxResponseBodySize() int           { return DefaultMaxResponseBodySize }
+func (c *testConfig) MaxConnDuration() time.Duration     { return DefaultMaxConnDuration }
+func (c *testConfig) StreamResponseBody() bool           { return false }
+func (c *testConfig) TLSMinVersion() uint16              { return 0 }
+func (c *testConfig) TLSMaxVersion() uint16              { return 0 }
+func (c *testConfig) TLSServerName() string              { return "" }
+func (c *testConfig) TLSRootCAFile() string              { return "" }
+func (c *testConfig) TLSClientCertFile() string          { return "" }
+func (c *testConfig) TLSClientKeyFile() string           { return "" }
 
 func newTestConfig(baseUrl string) *testConfig {
 	return &testConfig{
@@ -47,133 +59,169 @@ func newTestConfig(baseUrl string) *testConfig {
 }
 
 func TestClientImpl_Get(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/test", r.URL.Path)
 		assert.Equal(t, "bar", r.URL.Query().Get("foo"))
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test",
 		WithQueryParam("foo", "bar"))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, `{"status":"ok"}`, string(resp.Body))
+	assert.Equal(t, http.StatusOK, resp.GetStatusCode())
+	assert.JSONEq(t, `{"status":"ok"}`, string(resp.GetBody()))
 }
 
 func TestClientImpl_Post(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/test", r.URL.Path)
 
-		body, _ := io.ReadAll(r.Body)
-		assert.Equal(t, `{"name":"test"}`, string(body))
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.JSONEq(t, `{"name":"test"}`, string(body))
 
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"id":123}`))
+
+		if _, err := w.Write([]byte(`{"id":123}`)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Post(context.Background(), "/test",
 		WithBody([]byte(`{"name":"test"}`)))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	assert.Equal(t, `{"id":123}`, string(resp.Body))
+	assert.Equal(t, http.StatusCreated, resp.GetStatusCode())
+	assert.Equal(t, `{"id":123}`, string(resp.GetBody()))
 }
 
 func TestClientImpl_PostMultipart(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.True(t, strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data"))
 
 		err := r.ParseMultipartForm(10 << 20)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		assert.Equal(t, "test_value", r.FormValue("test_field"))
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"uploaded":true}`))
+
+		if _, err := w.Write([]byte(`{"uploaded":true}`)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
-	formData := NewFormData()
-	err := formData.AddField("test_field", "test_value")
+	formData := NewFormDataImpl()
+	err = formData.AddField("test_field", "test_value")
 	require.NoError(t, err)
 
 	resp, err := client.Post(context.Background(), "/test",
 		WithFormData(formData))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, `{"uploaded":true}`, string(resp.Body))
+	assert.Equal(t, http.StatusOK, resp.GetStatusCode())
+	assert.Equal(t, `{"uploaded":true}`, string(resp.GetBody()))
 }
 
 func TestClientImpl_ErrorHandling_NotFound(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("not found"))
+
+		if _, err := w.Write([]byte("not found")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotFound)
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.ErrorIs(t, err, ErrNotFound)
+	assert.Equal(t, http.StatusNotFound, resp.GetStatusCode())
 }
 
 func TestClientImpl_ErrorHandling_BadRequest(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("bad request"))
+
+		if _, err := w.Write([]byte("bad request")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrBadRequest)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.ErrorIs(t, err, ErrBadRequest)
+	assert.Equal(t, http.StatusBadRequest, resp.GetStatusCode())
 }
 
 func TestClientImpl_ErrorHandling_ServerError(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("server error"))
+
+		if _, err := w.Write([]byte("server error")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNon200HttpCode)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.ErrorIs(t, err, ErrNon200HttpCode)
+	assert.Equal(t, http.StatusInternalServerError, resp.GetStatusCode())
 }
 
 func TestClientImpl_Headers(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "test-value", r.Header.Get("X-Custom-Header"))
 		assert.Equal(t, "base-value", r.Header.Get("X-Base-Header"))
@@ -188,14 +236,17 @@ func TestClientImpl_Headers(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
-	_, err := client.Get(context.Background(), "/test",
+	_, err = client.Get(context.Background(), "/test",
 		WithHeader("X-Custom-Header", "test-value"))
 	require.NoError(t, err)
 }
 
 func TestClientImpl_Do(t *testing.T) {
+	t.Parallel()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "PROPFIND", r.Method)
 		w.WriteHeader(http.StatusOK)
@@ -204,21 +255,26 @@ func TestClientImpl_Do(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config)
+	require.NoError(t, err)
 
 	resp, err := client.Do(context.Background(), "PROPFIND", "/test")
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusOK, resp.GetStatusCode())
 }
 
 func TestFormData_AddField(t *testing.T) {
-	formData := NewFormData()
+	t.Parallel()
+
+	formData := NewFormDataImpl()
 	err := formData.AddField("name", "value")
 	require.NoError(t, err)
 }
 
 func TestFormData_AddFields(t *testing.T) {
-	formData := NewFormData()
+	t.Parallel()
+
+	formData := NewFormDataImpl()
 	fields := FormFields{
 		"field1": "value1",
 		"field2": "value2",
@@ -228,19 +284,23 @@ func TestFormData_AddFields(t *testing.T) {
 }
 
 func TestFormData_AddFile(t *testing.T) {
-	formData := NewFormData()
-	body := bytes.NewBuffer([]byte("file content"))
+	t.Parallel()
+
+	formData := NewFormDataImpl()
+	body := bytes.NewBufferString("file content")
 	err := formData.AddFile("file", "test.txt", "text/plain", body)
 	require.NoError(t, err)
 }
 
 func TestAsJson(t *testing.T) {
+	t.Parallel()
+
 	type testEntity struct {
 		Name string `json:"name"`
 		Age  int    `json:"age"`
 	}
 
-	response := &Response{
+	response := &ResponseImpl{
 		StatusCode: 200,
 		Headers:    make(Headers),
 		Body:       []byte(`{"name":"John","age":30}`),
@@ -248,17 +308,19 @@ func TestAsJson(t *testing.T) {
 
 	typed, err := AsJson(response, testEntity{})
 	require.NoError(t, err)
-	assert.Equal(t, "John", typed.Entity.Name)
-	assert.Equal(t, 30, typed.Entity.Age)
-	assert.Equal(t, 200, typed.StatusCode)
+	assert.Equal(t, "John", typed.GetEntity().Name)
+	assert.Equal(t, 30, typed.GetEntity().Age)
+	assert.Equal(t, 200, typed.GetStatusCode())
 }
 
 func TestAsJson_InvalidJson(t *testing.T) {
+	t.Parallel()
+
 	type testEntity struct {
 		Name string `json:"name"`
 	}
 
-	response := &Response{
+	response := &ResponseImpl{
 		StatusCode: 200,
 		Headers:    make(Headers),
 		Body:       []byte(`invalid json`),

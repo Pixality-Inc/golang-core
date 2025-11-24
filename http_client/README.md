@@ -21,7 +21,10 @@ config := &http_client.ConfigYaml{
 
 // create client
 log := logger.NewLoggableImplWithService("my-service")
-client := http_client.NewClientImpl(log, config)
+client, err := http_client.NewClientImpl(log, config)
+if err != nil {
+    panic(err)
+}
 
 // make request
 resp, err := client.Get(context.Background(), "/users",
@@ -45,6 +48,13 @@ config := &http_client.ConfigYaml{
 ### Advanced Configuration
 
 ```go
+import (
+    "time"
+    
+    "github.com/pixality-inc/golang-core/http_client"
+    "github.com/pixality-inc/golang-core/retry"
+)
+
 config := &http_client.ConfigYaml{
     // basic settings
     BaseUrlValue:    "https://api.example.com",
@@ -65,12 +75,51 @@ config := &http_client.ConfigYaml{
     },
     
     // retry policy
-    RetryPolicyValue: &http_client.RetryPolicy{
-        MaxAttempts:        3,
-        InitialInterval:    100 * time.Millisecond,
-        BackoffCoefficient: 2.0,
-        MaxInterval:        5 * time.Second,
+    RetryPolicyValue: &retry.Config{
+        MaxAttemptsValue:        3,
+        InitialIntervalValue:    100 * time.Millisecond,
+        BackoffCoefficientValue: 2.0,
+        MaxIntervalValue:        5 * time.Second,
     },
+}
+```
+
+### TLS Configuration
+
+For secure connections with custom TLS settings:
+
+```go
+config := &http_client.ConfigYaml{
+    BaseUrlValue: "https://api.example.com",
+    TimeoutValue: 30 * time.Second,
+    
+    // tls version constraints
+    TLSMinVersionValue: http_client.TLSVersion12,
+    TLSMaxVersionValue: http_client.TLSVersion13,
+    
+    // custom root ca certificate
+    TLSRootCAFileValue: "/path/to/ca-cert.pem",
+    
+    // server name indication (sni)
+    TLSServerNameValue: "api.example.com",
+}
+```
+
+### Mutual TLS (mTLS) Configuration
+
+For client certificate authentication:
+
+```go
+config := &http_client.ConfigYaml{
+    BaseUrlValue: "https://api.example.com",
+    TimeoutValue: 30 * time.Second,
+    
+    // client certificate and key for mtls
+    TLSClientCertFileValue: "/path/to/client-cert.pem",
+    TLSClientKeyFileValue:  "/path/to/client-key.pem",
+    
+    // optionally specify custom root ca
+    TLSRootCAFileValue: "/path/to/ca-cert.pem",
 }
 ```
 
@@ -89,7 +138,14 @@ config := &http_client.ConfigYaml{
 | `WriteTimeout` | duration | Timeout | Write timeout (uses Timeout if 0) |
 | `MaxConnWaitTimeout` | duration | 0 | Max time to wait for connection |
 | `BaseHeaders` | Headers | nil | Headers for all requests |
-| `RetryPolicy` | *RetryPolicy | nil | Retry configuration |
+| `RetryPolicy` | retry.Policy | nil | Retry configuration |
+| `StreamResponseBody` | bool | false | Stream response body (no buffering) |
+| `TLSMinVersion` | uint16 | 0 | Minimum TLS version (use TLSVersion* constants) |
+| `TLSMaxVersion` | uint16 | 0 | Maximum TLS version (use TLSVersion* constants) |
+| `TLSServerName` | string | "" | Server name for SNI |
+| `TLSRootCAFile` | string | "" | Path to root CA certificate file |
+| `TLSClientCertFile` | string | "" | Path to client certificate file (for mTLS) |
+| `TLSClientKeyFile` | string | "" | Path to client key file (for mTLS) |
 
 ## Usage Examples
 
@@ -169,7 +225,7 @@ resp, err := client.Delete(ctx, "/users/123")
 
 ```go
 // create form data
-formData := http_client.NewFormData()
+formData := http_client.NewFormDataImpl()
 formData.AddField("name", "photo.jpg")
 formData.AddField("description", "My photo")
 formData.AddFile("file", "photo.jpg", "image/jpeg", fileReader)
@@ -186,7 +242,7 @@ If using swagger-generated clients that require direct body/contentType access:
 
 ```go
 // create form data
-formData := http_client.NewFormData()
+formData := http_client.NewFormDataImpl()
 formData.AddFile("file", "photo.jpg", "image/jpeg", fileReader)
 
 // build to get body and content type
@@ -303,6 +359,25 @@ resp, err := client.Post(ctx, "/upload",
 body, contentType, err := formData.Build()
 response, err := externalClient.UploadWithBody(ctx, contentType, body)
 ```
+
+### How timeouts and context work
+
+The client uses `Config.Timeout()` as the main timeout for the underlying fasthttp request:
+
+- `Timeout()` is passed to `fasthttp.Client.DoTimeout` as the request timeout
+- `context.Context` is checked after the request is finished to return `ctx.Err()` if the context was canceled or exceeded
+
+This means that the actual request duration is primarily limited by `Timeout()`, not by the context deadline. If stricter context based cancellation is required, the caller should choose an appropriate `Timeout()` value for the client configuration.
+
+### How retries work
+
+When a retry policy is configured, the client uses the `retry` package with the following defaults:
+
+- `ShouldRetry` retries on 5xx and 429 status codes
+- `ShouldRetry` does not retry on 4xx status codes except 429
+- when status code is zero it retries on network timeouts temporary errors and most non context errors
+
+For more specific retry rules `retry.DoWithCondition` can be combined with custom logic instead of relying only on `ShouldRetry`.
 
 **Why does `Build()` exist?**
 

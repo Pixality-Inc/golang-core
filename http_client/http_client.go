@@ -3,9 +3,11 @@ package http_client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -13,25 +15,28 @@ import (
 	http2 "github.com/pixality-inc/golang-core/http"
 	"github.com/pixality-inc/golang-core/json"
 	"github.com/pixality-inc/golang-core/logger"
+	"github.com/pixality-inc/golang-core/retry"
 	"github.com/pixality-inc/golang-core/timetrack"
 )
 
 var (
-	ErrNotFound       = errors.New("not found")
-	ErrBadRequest     = errors.New("bad request")
-	ErrNon200HttpCode = errors.New("non-200 http status code")
+	ErrNotFound            = errors.New("not found")
+	ErrBadRequest          = errors.New("bad request")
+	ErrNon200HttpCode      = errors.New("non-200 http status code")
+	ErrInvalidFormDataType = errors.New("invalid form data type")
+	ErrTLSConfig           = errors.New("failed to configure tls")
 )
 
 type Client interface {
-	Get(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Post(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Put(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Patch(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Delete(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Head(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
-	Options(ctx context.Context, uri string, opts ...RequestOption) (*Response, error)
+	Get(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Post(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Put(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Patch(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Delete(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Head(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
+	Options(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
 
-	Do(ctx context.Context, method, uri string, opts ...RequestOption) (*Response, error)
+	Do(ctx context.Context, method, uri string, opts ...RequestOption) (Response, error)
 }
 
 type ClientImpl struct {
@@ -43,7 +48,7 @@ type ClientImpl struct {
 func NewClientImpl(
 	log logger.Loggable,
 	config Config,
-) *ClientImpl {
+) (*ClientImpl, error) {
 	readTimeout := config.ReadTimeout()
 	if readTimeout == 0 {
 		readTimeout = config.Timeout()
@@ -55,63 +60,160 @@ func NewClientImpl(
 	}
 
 	client := &fasthttp.Client{
+		Name:                     config.Name(),
 		ReadTimeout:              readTimeout,
 		WriteTimeout:             writeTimeout,
 		MaxConnsPerHost:          config.MaxConnsPerHost(),
 		MaxIdleConnDuration:      config.MaxIdleConnDuration(),
 		MaxConnWaitTimeout:       config.MaxConnWaitTimeout(),
+		MaxConnDuration:          config.MaxConnDuration(),
+		ReadBufferSize:           config.ReadBufferSize(),
+		WriteBufferSize:          config.WriteBufferSize(),
+		MaxResponseBodySize:      config.MaxResponseBodySize(),
 		NoDefaultUserAgentHeader: false,
 		DisablePathNormalizing:   false,
+		StreamResponseBody:       config.StreamResponseBody(),
 	}
 
-	if config.InsecureSkipVerify() {
-		client.TLSConfig = &tls.Config{
-			InsecureSkipVerify: true, // nolint:gosec
-		}
+	tlsConfig, err := configureTLS(config)
+	if err != nil {
+		return nil, err
 	}
+
+	client.TLSConfig = tlsConfig
 
 	return &ClientImpl{
 		log:    log,
 		config: config,
 		client: client,
-	}
+	}, nil
 }
 
-func (c *ClientImpl) Get(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func hasTLSConfig(config Config) bool {
+	return config.InsecureSkipVerify() ||
+		config.TLSMinVersion() != 0 ||
+		config.TLSMaxVersion() != 0 ||
+		config.TLSServerName() != "" ||
+		config.TLSRootCAFile() != "" ||
+		config.TLSClientCertFile() != "" ||
+		config.TLSClientKeyFile() != ""
+}
+
+func configureTLS(config Config) (*tls.Config, error) {
+	if !hasTLSConfig(config) {
+		return nil, nil
+	}
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: config.InsecureSkipVerify(), // nolint:gosec
+	}
+
+	if config.TLSMinVersion() != 0 {
+		tlsConfig.MinVersion = config.TLSMinVersion()
+	}
+
+	if config.TLSMaxVersion() != 0 {
+		tlsConfig.MaxVersion = config.TLSMaxVersion()
+	}
+
+	if config.TLSServerName() != "" {
+		tlsConfig.ServerName = config.TLSServerName()
+	}
+
+	if err := loadRootCA(config, tlsConfig); err != nil {
+		return nil, err
+	}
+
+	if err := loadClientCertificate(config, tlsConfig); err != nil {
+		return nil, err
+	}
+
+	return tlsConfig, nil
+}
+
+func loadRootCA(config Config, tlsConfig *tls.Config) error {
+	if config.TLSRootCAFile() == "" {
+		return nil
+	}
+
+	caCert, err := os.ReadFile(config.TLSRootCAFile())
+	if err != nil {
+		return fmt.Errorf("%w: failed to read root ca file: %w", ErrTLSConfig, err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return fmt.Errorf("%w: failed to parse root ca certificate", ErrTLSConfig)
+	}
+
+	tlsConfig.RootCAs = caCertPool
+
+	return nil
+}
+
+func loadClientCertificate(config Config, tlsConfig *tls.Config) error {
+	if config.TLSClientCertFile() == "" || config.TLSClientKeyFile() == "" {
+		return nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(config.TLSClientCertFile(), config.TLSClientKeyFile())
+	if err != nil {
+		return fmt.Errorf("%w: failed to load client certificate: %w", ErrTLSConfig, err)
+	}
+
+	tlsConfig.Certificates = []tls.Certificate{cert}
+
+	return nil
+}
+
+func (c *ClientImpl) Get(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodGet, uri, opts...)
 }
 
-func (c *ClientImpl) Post(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Post(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodPost, uri, opts...)
 }
 
-func (c *ClientImpl) Put(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Put(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodPut, uri, opts...)
 }
 
-func (c *ClientImpl) Patch(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Patch(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodPatch, uri, opts...)
 }
 
-func (c *ClientImpl) Delete(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Delete(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodDelete, uri, opts...)
 }
 
-func (c *ClientImpl) Head(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Head(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodHead, uri, opts...)
 }
 
-func (c *ClientImpl) Options(ctx context.Context, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Options(ctx context.Context, uri string, opts ...RequestOption) (Response, error) {
 	return c.Do(ctx, http.MethodOptions, uri, opts...)
 }
 
-func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...RequestOption) (*Response, error) {
+func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...RequestOption) (Response, error) {
 	cfg := applyOptions(opts...)
 
 	if c.config.RetryPolicy() != nil {
-		return c.doWithRetry(ctx, func() (*Response, error) {
-			return c.performRequest(ctx, method, uri, cfg)
-		})
+		return retry.DoWithCondition(
+			ctx,
+			c.config.RetryPolicy(),
+			c.log,
+			func() (Response, error) {
+				return c.performRequest(ctx, method, uri, cfg)
+			},
+			func(response Response, err error) bool {
+				statusCode := 0
+				if response != nil {
+					statusCode = response.GetStatusCode()
+				}
+
+				return retry.ShouldRetry(statusCode, err)
+			},
+		)
 	}
 
 	return c.performRequest(ctx, method, uri, cfg)
@@ -122,18 +224,19 @@ func (c *ClientImpl) makeUrl(uri string) string {
 	if baseUrl == "" {
 		return uri
 	}
+
 	return baseUrl + uri
 }
 
-func AsJson[OUT any](response *Response, defaultValue OUT) (*TypedResponse[OUT], error) {
-	typedResponse := &TypedResponse[OUT]{
-		StatusCode: response.StatusCode,
-		Headers:    response.Headers,
-		Body:       response.Body,
+func AsJson[OUT any](response Response, defaultValue OUT) (TypedResponse[OUT], error) {
+	typedResponse := &TypedResponseImpl[OUT]{
+		StatusCode: response.GetStatusCode(),
+		Headers:    response.GetHeaders(),
+		Body:       response.GetBody(),
 		Entity:     defaultValue,
 	}
 
-	if err := json.Unmarshal(response.Body, &typedResponse.Entity); err != nil {
+	if err := json.Unmarshal(response.GetBody(), &typedResponse.Entity); err != nil {
 		return nil, err
 	}
 
@@ -167,9 +270,9 @@ func (c *ClientImpl) applyRequestConfig(ctx context.Context, req *fasthttp.Reque
 	}
 
 	if cfg.FormData != nil {
-		formData, ok := cfg.FormData.(*FormData)
+		formData, ok := cfg.FormData.(*FormDataImpl)
 		if !ok {
-			return errors.New("invalid form data type")
+			return ErrInvalidFormDataType
 		}
 
 		body, contentType, err := formData.build()
@@ -190,11 +293,14 @@ func (c *ClientImpl) applyRequestConfig(ctx context.Context, req *fasthttp.Reque
 	return nil
 }
 
-func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg *RequestConfig) (*Response, error) {
+// performRequest uses config timeout as fasthttp client timeout
+// ctx is checked after request to respect cancellation and deadlines
+func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg *RequestConfig) (Response, error) {
 	requestTimeTracker := timetrack.New()
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
+
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
@@ -212,7 +318,7 @@ func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg
 		return nil, ctx.Err()
 	}
 
-	response := &Response{
+	response := &ResponseImpl{
 		StatusCode: resp.StatusCode(),
 		Headers:    make(Headers),
 		Body:       make([]byte, len(resp.Body())),
@@ -220,7 +326,7 @@ func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg
 
 	copy(response.Body, resp.Body())
 
-	resp.Header.VisitAll(func(key, value []byte) {
+	resp.Header.VisitAll(func(key, value []byte) { // nolint:staticcheck
 		headerKey := string(key)
 		headerValue := string(value)
 		response.Headers[headerKey] = append(response.Headers[headerKey], headerValue)
@@ -238,7 +344,7 @@ func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg
 func (c *ClientImpl) logRequest(
 	ctx context.Context,
 	method, url string,
-	response *Response,
+	response Response,
 	err error,
 	tracker *timetrack.TimeTracker,
 ) {
@@ -250,51 +356,58 @@ func (c *ClientImpl) logRequest(
 		"logger":         c.config.Name(),
 		"method":         method,
 		"url":            url,
-		"success":        err == nil && (response == nil || (response.StatusCode >= 200 && response.StatusCode < 300)),
+		"success":        err == nil && (response == nil || (response.GetStatusCode() >= 200 && response.GetStatusCode() < 300)),
 		"execution_time": tracker.Duration().Milliseconds(),
 	}
 
 	if response != nil {
-		if value, ok := response.Headers["Content-Type"]; ok {
+		if value, ok := response.GetHeaders()["Content-Type"]; ok {
 			fields["content_type"] = strings.Join(value, ",")
 		}
 
-		fields["body_bytes"] = len(response.Body)
-		fields["status_code"] = response.StatusCode
+		fields["body_bytes"] = len(response.GetBody())
+		fields["status_code"] = response.GetStatusCode()
 	}
 
 	logWithFields := log.WithFields(fields)
 
-	if err != nil {
+	switch {
+	case err != nil:
 		logWithFields.WithError(err).Error(url)
-	} else if response != nil && (response.StatusCode < 200 || response.StatusCode >= 300) {
+	case response != nil && (response.GetStatusCode() < 200 || response.GetStatusCode() >= 300):
 		logWithFields.Warn(url)
-	} else {
+	default:
 		logWithFields.Debug(url)
 	}
 }
 
-func (c *ClientImpl) handleStatusCode(response *Response) (*Response, error) {
+func (c *ClientImpl) handleStatusCode(response Response) (Response, error) {
+	statusCode := response.GetStatusCode()
+	body := response.GetBody()
+
 	switch {
-	case response.StatusCode >= 200 && response.StatusCode <= 299:
+	case statusCode >= 200 && statusCode <= 299:
 		return response, nil
 
-	case response.StatusCode == http.StatusNotFound:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %s", ErrNotFound, response.Body)
+	case statusCode == http.StatusNotFound:
+		if len(body) > 0 {
+			return response, fmt.Errorf("%w: %s", ErrNotFound, body)
 		}
+
 		return response, ErrNotFound
 
-	case response.StatusCode == http.StatusBadRequest:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %s", ErrBadRequest, response.Body)
+	case statusCode == http.StatusBadRequest:
+		if len(body) > 0 {
+			return response, fmt.Errorf("%w: %s", ErrBadRequest, body)
 		}
+
 		return response, ErrBadRequest
 
 	default:
-		if len(response.Body) > 0 {
-			return response, fmt.Errorf("%w: %d: %s", ErrNon200HttpCode, response.StatusCode, response.Body)
+		if len(body) > 0 {
+			return response, fmt.Errorf("%w: %d: %s", ErrNon200HttpCode, statusCode, body)
 		}
-		return response, fmt.Errorf("%w: %d", ErrNon200HttpCode, response.StatusCode)
+
+		return response, fmt.Errorf("%w: %d", ErrNon200HttpCode, statusCode)
 	}
 }
