@@ -93,12 +93,18 @@ func (p *OsProvider) ReadFile(ctx context.Context, path string) (io.ReadCloser, 
 	return file, nil
 }
 
-func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) error {
+func (p *OsProvider) Compose(_ context.Context, path string, chunks []string) error {
 	if len(chunks) == 1 {
-		fullPath := p.getFullPath(path)
-		chunkFullPath := p.getFullPath(chunks[0])
+		destPath := p.getFullPath(path)
 
-		return util.CopyFile(chunkFullPath, fullPath)
+		destDir := filepath.Dir(destPath)
+		if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
+			return fmt.Errorf("create dir %s for file %s: %w", destDir, path, err)
+		}
+
+		sourcePath := p.getFullPath(chunks[0])
+
+		return util.CopyFile(sourcePath, destPath)
 	} else {
 		return util.ErrNotImplemented
 	}
