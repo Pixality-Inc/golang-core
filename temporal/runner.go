@@ -126,9 +126,11 @@ func ExecuteActivityAsync[IN any, OUT any](
 	defaultValue OUT,
 	data IN,
 ) (*ActivityFuture[OUT], error) {
-	future := workflow.ExecuteActivity(getActivityCtx(ctx, activityWrapper), activityWrapper.activity.Name(), data)
+	activityName := string(activityWrapper.activity.Name())
 
-	return NewActivityFuture[OUT](string(activityWrapper.activity.Name()), future, defaultValue), nil
+	future := workflow.ExecuteActivity(getActivityCtx(ctx, activityWrapper), activityName, data)
+
+	return NewActivityFuture[OUT](activityName, future, defaultValue), nil
 }
 
 func ExecuteActivitySync[IN any, OUT any](
