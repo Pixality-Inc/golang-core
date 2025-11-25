@@ -50,29 +50,29 @@ type Config interface {
 }
 
 type ConfigYaml struct {
-	BaseUrlValue             string        `env:"BASE_URL"               yaml:"base_url"`
-	InsecureSkipVerifyValue  bool          `env:"INSECURE_SKIP_VERIFY"   yaml:"insecure_skip_verify"`
-	TimeoutValue             time.Duration `env:"TIMEOUT"                yaml:"timeout"`
-	BaseHeadersValue         Headers       `env:"BASE_HEADERS"           yaml:"base_headers"`
-	UseRequestIdValue        bool          `env:"USE_REQUEST_ID"         yaml:"use_request_id"`
-	NameValue                string        `env:"NAME"                   yaml:"name"`
-	MaxConnsPerHostValue     int           `env:"MAX_CONNS_PER_HOST"     yaml:"max_conns_per_host"`
-	MaxIdleConnDurationValue time.Duration `env:"MAX_IDLE_CONN_DURATION" yaml:"max_idle_conn_duration"`
-	ReadTimeoutValue         time.Duration `env:"READ_TIMEOUT"           yaml:"read_timeout"`
-	WriteTimeoutValue        time.Duration `env:"WRITE_TIMEOUT"          yaml:"write_timeout"`
-	MaxConnWaitTimeoutValue  time.Duration `env:"MAX_CONN_WAIT_TIMEOUT"  yaml:"max_conn_wait_timeout"`
-	RetryPolicyValue         *retry.Config `env:"RETRY_POLICY"           yaml:"retry_policy"`
-	ReadBufferSizeValue      int           `env:"READ_BUFFER_SIZE"       yaml:"read_buffer_size"`
-	WriteBufferSizeValue     int           `env:"WRITE_BUFFER_SIZE"      yaml:"write_buffer_size"`
-	MaxResponseBodySizeValue int           `env:"MAX_RESPONSE_BODY_SIZE" yaml:"max_response_body_size"`
-	MaxConnDurationValue     time.Duration `env:"MAX_CONN_DURATION"      yaml:"max_conn_duration"`
-	StreamResponseBodyValue  bool          `env:"STREAM_RESPONSE_BODY"   yaml:"stream_response_body"`
-	TLSMinVersionValue       uint16        `env:"TLS_MIN_VERSION"        yaml:"tls_min_version"`
-	TLSMaxVersionValue       uint16        `env:"TLS_MAX_VERSION"        yaml:"tls_max_version"`
-	TLSServerNameValue       string        `env:"TLS_SERVER_NAME"        yaml:"tls_server_name"`
-	TLSRootCAFileValue       string        `env:"TLS_ROOT_CA_FILE"       yaml:"tls_root_ca_file"`
-	TLSClientCertFileValue   string        `env:"TLS_CLIENT_CERT_FILE"   yaml:"tls_client_cert_file"`
-	TLSClientKeyFileValue    string        `env:"TLS_CLIENT_KEY_FILE"    yaml:"tls_client_key_file"`
+	BaseUrlValue             string            `env:"BASE_URL"               yaml:"base_url"`
+	InsecureSkipVerifyValue  bool              `env:"INSECURE_SKIP_VERIFY"   yaml:"insecure_skip_verify"`
+	TimeoutValue             time.Duration     `env:"TIMEOUT"                yaml:"timeout"`
+	BaseHeadersValue         Headers           `env:"BASE_HEADERS"           yaml:"base_headers"`
+	UseRequestIdValue        bool              `env:"USE_REQUEST_ID"         yaml:"use_request_id"`
+	NameValue                string            `env:"NAME"                   yaml:"name"`
+	MaxConnsPerHostValue     int               `env:"MAX_CONNS_PER_HOST"     yaml:"max_conns_per_host"`
+	MaxIdleConnDurationValue time.Duration     `env:"MAX_IDLE_CONN_DURATION" yaml:"max_idle_conn_duration"`
+	ReadTimeoutValue         time.Duration     `env:"READ_TIMEOUT"           yaml:"read_timeout"`
+	WriteTimeoutValue        time.Duration     `env:"WRITE_TIMEOUT"          yaml:"write_timeout"`
+	MaxConnWaitTimeoutValue  time.Duration     `env:"MAX_CONN_WAIT_TIMEOUT"  yaml:"max_conn_wait_timeout"`
+	RetryPolicyValue         *retry.ConfigYaml `env-prefix:"RETRY_POLICY"    yaml:"retry_policy"`
+	ReadBufferSizeValue      int               `env:"READ_BUFFER_SIZE"       yaml:"read_buffer_size"`
+	WriteBufferSizeValue     int               `env:"WRITE_BUFFER_SIZE"      yaml:"write_buffer_size"`
+	MaxResponseBodySizeValue int               `env:"MAX_RESPONSE_BODY_SIZE" yaml:"max_response_body_size"`
+	MaxConnDurationValue     time.Duration     `env:"MAX_CONN_DURATION"      yaml:"max_conn_duration"`
+	StreamResponseBodyValue  bool              `env:"STREAM_RESPONSE_BODY"   yaml:"stream_response_body"`
+	TLSMinVersionValue       uint16            `env:"TLS_MIN_VERSION"        yaml:"tls_min_version"`
+	TLSMaxVersionValue       uint16            `env:"TLS_MAX_VERSION"        yaml:"tls_max_version"`
+	TLSServerNameValue       string            `env:"TLS_SERVER_NAME"        yaml:"tls_server_name"`
+	TLSRootCAFileValue       string            `env:"TLS_ROOT_CA_FILE"       yaml:"tls_root_ca_file"`
+	TLSClientCertFileValue   string            `env:"TLS_CLIENT_CERT_FILE"   yaml:"tls_client_cert_file"`
+	TLSClientKeyFileValue    string            `env:"TLS_CLIENT_KEY_FILE"    yaml:"tls_client_key_file"`
 }
 
 func (c *ConfigYaml) BaseUrl() string {

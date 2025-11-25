@@ -25,6 +25,7 @@ var (
 	ErrNon200HttpCode      = errors.New("non-200 http status code")
 	ErrInvalidFormDataType = errors.New("invalid form data type")
 	ErrTLSConfig           = errors.New("failed to configure tls")
+	ErrBothFormDataAndBody = errors.New("both form data and body provided")
 )
 
 type Client interface {
@@ -269,6 +270,10 @@ func (c *ClientImpl) applyRequestConfig(ctx context.Context, req *fasthttp.Reque
 		}
 	}
 
+	if cfg.FormData != nil && len(cfg.Body) > 0 {
+		return ErrBothFormDataAndBody
+	}
+
 	if cfg.FormData != nil {
 		formData, ok := cfg.FormData.(*FormDataImpl)
 		if !ok {
@@ -369,15 +374,15 @@ func (c *ClientImpl) logRequest(
 		fields["status_code"] = response.GetStatusCode()
 	}
 
-	logWithFields := log.WithFields(fields)
+	log = log.WithFields(fields)
 
 	switch {
 	case err != nil:
-		logWithFields.WithError(err).Error(url)
+		log.WithError(err).Error(url)
 	case response != nil && (response.GetStatusCode() < 200 || response.GetStatusCode() >= 300):
-		logWithFields.Warn(url)
+		log.Warn(url)
 	default:
-		logWithFields.Debug(url)
+		log.Debug(url)
 	}
 }
 

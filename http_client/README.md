@@ -75,7 +75,7 @@ config := &http_client.ConfigYaml{
     },
     
     // retry policy
-    RetryPolicyValue: &retry.Config{
+    RetryPolicyValue: &retry.ConfigYaml{
         MaxAttemptsValue:        3,
         InitialIntervalValue:    100 * time.Millisecond,
         BackoffCoefficientValue: 2.0,

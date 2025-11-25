@@ -10,10 +10,10 @@ type Policy interface {
 }
 
 type PolicyImpl struct {
-	MaxAttemptsValue        int           `yaml:"max_attempts"`
-	InitialIntervalValue    time.Duration `yaml:"initial_interval"`
-	BackoffCoefficientValue float64       `yaml:"backoff_coefficient"`
-	MaxIntervalValue        time.Duration `yaml:"max_interval"`
+	MaxAttemptsValue        int           `env:"MAX_ATTEMPTS"        yaml:"max_attempts"`
+	InitialIntervalValue    time.Duration `env:"INITIAL_INTERVAL"    yaml:"initial_interval"`
+	BackoffCoefficientValue float64       `env:"BACKOFF_COEFFICIENT" yaml:"backoff_coefficient"`
+	MaxIntervalValue        time.Duration `env:"MAX_INTERVAL"        yaml:"max_interval"`
 }
 
 func (p *PolicyImpl) MaxAttempts() int {
@@ -32,26 +32,26 @@ func (p *PolicyImpl) MaxInterval() time.Duration {
 	return p.MaxIntervalValue
 }
 
-type Config struct {
-	MaxAttemptsValue        int           `yaml:"max_attempts"`
-	InitialIntervalValue    time.Duration `yaml:"initial_interval"`
-	BackoffCoefficientValue float64       `yaml:"backoff_coefficient"`
-	MaxIntervalValue        time.Duration `yaml:"max_interval"`
+type ConfigYaml struct {
+	MaxAttemptsValue        int           `env:"MAX_ATTEMPTS"        yaml:"max_attempts"`
+	InitialIntervalValue    time.Duration `env:"INITIAL_INTERVAL"    yaml:"initial_interval"`
+	BackoffCoefficientValue float64       `env:"BACKOFF_COEFFICIENT" yaml:"backoff_coefficient"`
+	MaxIntervalValue        time.Duration `env:"MAX_INTERVAL"        yaml:"max_interval"`
 }
 
-func (c *Config) MaxAttempts() int {
+func (c *ConfigYaml) MaxAttempts() int {
 	return c.MaxAttemptsValue
 }
 
-func (c *Config) InitialInterval() time.Duration {
+func (c *ConfigYaml) InitialInterval() time.Duration {
 	return c.InitialIntervalValue
 }
 
-func (c *Config) BackoffCoefficient() float64 {
+func (c *ConfigYaml) BackoffCoefficient() float64 {
 	return c.BackoffCoefficientValue
 }
 
-func (c *Config) MaxInterval() time.Duration {
+func (c *ConfigYaml) MaxInterval() time.Duration {
 	return c.MaxIntervalValue
 }
 

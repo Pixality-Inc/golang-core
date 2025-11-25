@@ -606,7 +606,7 @@ func TestNewPolicy_PartialOptions(t *testing.T) {
 func TestConfig_AsPolicy(t *testing.T) {
 	t.Parallel()
 
-	config := &Config{
+	config := &ConfigYaml{
 		MaxAttemptsValue:        7,
 		InitialIntervalValue:    250 * time.Millisecond,
 		BackoffCoefficientValue: 3.0,
