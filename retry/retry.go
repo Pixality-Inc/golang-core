@@ -71,7 +71,7 @@ func Do[T any](
 ) (T, error) {
 	var zero T
 
-	if policy == nil || policy.MaxAttempts() <= 1 {
+	if policy == nil || !policy.Enabled() || policy.MaxAttempts() <= 1 {
 		return operation()
 	}
 
@@ -131,7 +131,7 @@ func DoWithCondition[T any](
 ) (T, error) {
 	var zero T
 
-	if policy == nil || policy.MaxAttempts() <= 1 {
+	if policy == nil || !policy.Enabled() || policy.MaxAttempts() <= 1 {
 		return operation()
 	}
 
