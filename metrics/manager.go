@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/pixality-inc/golang-core/clock"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -18,10 +19,17 @@ type Manager interface {
 
 type Impl struct {
 	Driver
+
+	clock clock.Clock
 }
 
-func New(driver Driver) *Impl {
+func New(driver Driver, clock clock.Clock) *Impl {
 	return &Impl{
 		Driver: driver,
+		clock:  clock,
 	}
+}
+
+func (m *Impl) NewTimer(observer Observer) Timer {
+	return m.Driver.NewTimer(m.clock, observer)
 }
