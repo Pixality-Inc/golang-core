@@ -3,6 +3,7 @@ package retry
 import "time"
 
 type Policy interface {
+	Enabled() bool
 	MaxAttempts() int
 	InitialInterval() time.Duration
 	BackoffCoefficient() float64
@@ -10,10 +11,15 @@ type Policy interface {
 }
 
 type PolicyImpl struct {
+	EnabledValue            bool          `env:"ENABLED"             yaml:"enabled"`
 	MaxAttemptsValue        int           `env:"MAX_ATTEMPTS"        yaml:"max_attempts"`
 	InitialIntervalValue    time.Duration `env:"INITIAL_INTERVAL"    yaml:"initial_interval"`
 	BackoffCoefficientValue float64       `env:"BACKOFF_COEFFICIENT" yaml:"backoff_coefficient"`
 	MaxIntervalValue        time.Duration `env:"MAX_INTERVAL"        yaml:"max_interval"`
+}
+
+func (p *PolicyImpl) Enabled() bool {
+	return p.EnabledValue
 }
 
 func (p *PolicyImpl) MaxAttempts() int {
@@ -33,10 +39,15 @@ func (p *PolicyImpl) MaxInterval() time.Duration {
 }
 
 type ConfigYaml struct {
+	EnabledValue            bool          `env:"ENABLED"             yaml:"enabled"`
 	MaxAttemptsValue        int           `env:"MAX_ATTEMPTS"        yaml:"max_attempts"`
 	InitialIntervalValue    time.Duration `env:"INITIAL_INTERVAL"    yaml:"initial_interval"`
 	BackoffCoefficientValue float64       `env:"BACKOFF_COEFFICIENT" yaml:"backoff_coefficient"`
 	MaxIntervalValue        time.Duration `env:"MAX_INTERVAL"        yaml:"max_interval"`
+}
+
+func (c *ConfigYaml) Enabled() bool {
+	return c.EnabledValue
 }
 
 func (c *ConfigYaml) MaxAttempts() int {
@@ -56,6 +67,12 @@ func (c *ConfigYaml) MaxInterval() time.Duration {
 }
 
 type PolicyOption func(*PolicyImpl)
+
+func WithEnabled(enabled bool) PolicyOption {
+	return func(p *PolicyImpl) {
+		p.EnabledValue = enabled
+	}
+}
 
 func WithMaxAttempts(maxAttempts int) PolicyOption {
 	return func(p *PolicyImpl) {
@@ -83,6 +100,7 @@ func WithMaxInterval(interval time.Duration) PolicyOption {
 
 func NewPolicy(opts ...PolicyOption) Policy {
 	policy := &PolicyImpl{
+		EnabledValue:            false,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    100 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
