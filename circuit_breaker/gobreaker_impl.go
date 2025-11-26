@@ -15,7 +15,7 @@ func newGobreakerImpl(config Config, shouldIgnoreError func(err error) bool) Cir
 	log := logger.NewLoggableImplWithServiceAndFields(
 		"circuit_breaker",
 		logger.Fields{
-			"name": config.Name,
+			"name": config.Name(),
 		},
 	)
 
