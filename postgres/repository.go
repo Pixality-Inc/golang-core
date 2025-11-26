@@ -18,8 +18,14 @@ type (
 	TypedTransactionFunc[T any] = func(runner QueryRunner) (T, error)
 )
 
-func wrapQueryWithLogger(log logger.Logger, query Query, fn func(sqlQuery string, args []any, err error) error) error {
-	queryTimeTracker := timetrack.New()
+func wrapQueryWithLogger(
+	ctx context.Context,
+	query Query,
+	fn func(sqlQuery string, args []any, err error) error,
+) error {
+	log := logger.GetLogger(ctx)
+
+	queryTimeTracker := timetrack.New(ctx)
 
 	sqlQuery, args, queryErr := query.ToSql()
 
@@ -62,14 +68,18 @@ func wrapQueryWithLogger(log logger.Logger, query Query, fn func(sqlQuery string
 	return nil
 }
 
-func ExecuteQuery(ctx context.Context, queryRunner QueryRunner, query Query) error {
+func ExecuteQuery(
+	ctx context.Context,
+	queryRunner QueryRunner,
+	query Query,
+) error {
 	queryExecutor, err := queryRunner.Executor()
 	if err != nil {
 		return err
 	}
 
 	return wrapQueryWithLogger(
-		logger.GetLogger(ctx),
+		ctx,
 		query,
 		func(sqlQuery string, args []any, err error) error {
 			if err != nil {
@@ -93,7 +103,7 @@ func ExecuteQueryRows(ctx context.Context, queryRunner QueryRunner, query Query,
 	}
 
 	return wrapQueryWithLogger(
-		logger.GetLogger(ctx),
+		ctx,
 		query,
 		func(sqlQuery string, args []any, err error) error {
 			if err != nil {
@@ -140,7 +150,7 @@ func ExecuteTypedTransaction[T any](
 	nullValue T,
 	function TypedTransactionFunc[T],
 ) (T, error) {
-	transactionTimeTracker := timetrack.New()
+	transactionTimeTracker := timetrack.New(ctx)
 
 	result := nullValue
 

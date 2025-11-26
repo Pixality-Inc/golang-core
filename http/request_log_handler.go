@@ -14,7 +14,7 @@ func RequestLogHandler(originalHandler fasthttp.RequestHandler) fasthttp.Request
 	loggable := logger.NewLoggableImplWithService("request_log_handler")
 
 	return func(ctx *fasthttp.RequestCtx) {
-		requestTimeTracker := timetrack.New()
+		requestTimeTracker := timetrack.New(ctx)
 
 		originalHandler(ctx)
 

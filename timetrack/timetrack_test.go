@@ -1,9 +1,11 @@
 package timetrack
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/pixality-inc/golang-core/clock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,9 +14,13 @@ const sleepMillis int64 = 10
 func TestTimeTrack(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
+	// @todo test with clock
+	testClock := clock.Default
+	ctx := clock.WithClock(context.Background(), testClock)
 
-	track := New()
+	now := testClock.Now()
+
+	track := New(ctx)
 
 	startDelta := track.Start.Sub(now)
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pixality-inc/golang-core/cache"
+	"github.com/pixality-inc/golang-core/clock"
 )
 
 type Entry struct {
@@ -47,7 +48,7 @@ func (p *Memory) Has(
 }
 
 func (p *Memory) Get(
-	_ context.Context,
+	ctx context.Context,
 	group cache.Group,
 	key string,
 ) ([]byte, error) {
@@ -57,7 +58,7 @@ func (p *Memory) Get(
 	groupKey := p.key(group, key)
 
 	if value, ok := p.storage[groupKey]; ok {
-		if time.Now().After(value.ExpiresAt) {
+		if clock.GetClock(ctx).Now().After(value.ExpiresAt) {
 			delete(p.storage, groupKey)
 
 			return nil, fmt.Errorf("%w: %s", cache.ErrProviderNoSuchKey, groupKey)
@@ -70,7 +71,7 @@ func (p *Memory) Get(
 }
 
 func (p *Memory) Set(
-	_ context.Context,
+	ctx context.Context,
 	group cache.Group,
 	key string,
 	value []byte,
@@ -81,7 +82,7 @@ func (p *Memory) Set(
 
 	groupKey := p.key(group, key)
 
-	p.storage[groupKey] = NewEntry(value, time.Now().Add(ttl))
+	p.storage[groupKey] = NewEntry(value, clock.GetClock(ctx).Now().Add(ttl))
 
 	return nil
 }

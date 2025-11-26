@@ -1,6 +1,8 @@
 package jwt
 
-import "time"
+import (
+	"time"
+)
 
 type Token interface {
 	Claims() Claims
@@ -22,7 +24,7 @@ type TokenImpl struct {
 	expiresAt time.Time
 }
 
-func NewToken(claims Claims) *TokenImpl {
+func NewToken(issuedAt time.Time, claims Claims) *TokenImpl {
 	if claims == nil {
 		claims = make(Claims)
 	}
@@ -30,13 +32,13 @@ func NewToken(claims Claims) *TokenImpl {
 	return &TokenImpl{
 		claims:    claims,
 		signed:    "",
-		issuedAt:  time.Now(),
-		expiresAt: time.Now().Add(time.Hour),
+		issuedAt:  issuedAt,
+		expiresAt: issuedAt.Add(time.Hour),
 	}
 }
 
-func newSignedToken(claims Claims, signed string) *TokenImpl {
-	token := NewToken(claims)
+func newSignedToken(issuedAt time.Time, claims Claims, signed string) *TokenImpl {
+	token := NewToken(issuedAt, claims)
 
 	token.signed = signed
 

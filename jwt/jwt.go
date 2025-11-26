@@ -1,9 +1,11 @@
 package jwt
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
+	"github.com/pixality-inc/golang-core/clock"
 	"github.com/pixality-inc/golang-core/logger"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,8 +22,8 @@ var (
 type Claims = jwt.MapClaims
 
 type Jwt interface {
-	Decode(signedString string) (Token, error)
-	Encode(token Token) (SignedToken, error)
+	Decode(ctx context.Context, signedString string) (Token, error)
+	Encode(ctx context.Context, token Token) (SignedToken, error)
 }
 
 type Impl struct {
@@ -36,7 +38,9 @@ func New(secret string) *Impl {
 	}
 }
 
-func (j *Impl) Decode(signedString string) (Token, error) {
+func (j *Impl) Decode(ctx context.Context, signedString string) (Token, error) {
+	clocks := clock.GetClock(ctx)
+
 	jwtToken, err := jwt.Parse(signedString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
@@ -57,12 +61,14 @@ func (j *Impl) Decode(signedString string) (Token, error) {
 		return nil, ErrExtractClaims
 	}
 
-	token := newSignedToken(claims, signedString)
+	token := newSignedToken(clocks.Now(), claims, signedString)
 
 	return token, nil
 }
 
-func (j *Impl) Encode(token Token) (SignedToken, error) {
+func (j *Impl) Encode(ctx context.Context, token Token) (SignedToken, error) {
+	clocks := clock.GetClock(ctx)
+
 	claims := token.Claims()
 
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -75,7 +81,7 @@ func (j *Impl) Encode(token Token) (SignedToken, error) {
 		return nil, errors.Join(ErrSign, err)
 	}
 
-	signedToken := newSignedToken(claims, signedString)
+	signedToken := newSignedToken(clocks.Now(), claims, signedString)
 
 	return signedToken, nil
 }

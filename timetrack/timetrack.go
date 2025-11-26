@@ -1,22 +1,29 @@
 package timetrack
 
 import (
+	"context"
 	"time"
+
+	"github.com/pixality-inc/golang-core/clock"
 )
 
 type TimeTracker struct {
+	clock clock.Clock
 	Start time.Time
 	End   time.Time
 }
 
-func New() *TimeTracker {
+func New(ctx context.Context) *TimeTracker {
+	contextClock := clock.GetClock(ctx)
+
 	return &TimeTracker{
-		Start: time.Now(),
+		clock: contextClock,
+		Start: contextClock.Now(),
 	}
 }
 
 func (t *TimeTracker) Finish() time.Duration {
-	t.End = time.Now()
+	t.End = t.clock.Now()
 
 	return t.Duration()
 }

@@ -46,7 +46,7 @@ func (c *Impl) Path() string {
 }
 
 func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...string) ([]byte, []byte, error) {
-	cmdTimeTracker := timetrack.New()
+	cmdTimeTracker := timetrack.New(ctx)
 
 	log := c.log.GetLogger(ctx)
 

@@ -87,7 +87,7 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 	}
 
 	for _, action := range f.config.Actions {
-		track := timetrack.New()
+		track := timetrack.New(ctx)
 
 		actionResponse, err := f.runAction(ctx, env, action)
 		if err != nil {

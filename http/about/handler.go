@@ -3,6 +3,7 @@ package about
 import (
 	"time"
 
+	"github.com/pixality-inc/golang-core/clock"
 	"github.com/pixality-inc/golang-core/env"
 	"github.com/pixality-inc/golang-core/json"
 
@@ -54,7 +55,7 @@ func NewHandler(
 }
 
 func (h *Handler) Get(ctx *fasthttp.RequestCtx) {
-	now := time.Now()
+	now := clock.GetClock(ctx).Now()
 
 	response := Response{
 		Env: ResponseEnv{

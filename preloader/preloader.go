@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pixality-inc/golang-core/clock"
 	"github.com/pixality-inc/golang-core/errors"
 	"github.com/pixality-inc/golang-core/logger"
 )
@@ -58,7 +59,7 @@ func New[T any](
 		ttl:           config.TTL(),
 		loader:        loader,
 		currentValue:  defaultValue,
-		lastRefreshAt: time.Now().Add(-config.TTL()),
+		lastRefreshAt: time.Time{},
 		mutex:         sync.Mutex{},
 	}
 }
@@ -80,7 +81,7 @@ func (p *Impl[T]) LastRefreshAt() time.Time {
 }
 
 func (p *Impl[T]) Value(ctx context.Context) (T, error) {
-	if !p.isExpired() {
+	if !p.isExpired(clock.GetClock(ctx).Now()) {
 		return p.currentValue, nil
 	}
 
@@ -102,11 +103,11 @@ func (p *Impl[T]) Refresh(ctx context.Context) (T, error) {
 	}
 
 	p.currentValue = newValue
-	p.lastRefreshAt = time.Now()
+	p.lastRefreshAt = clock.GetClock(ctx).Now()
 
 	return newValue, nil
 }
 
-func (p *Impl[T]) isExpired() bool {
-	return time.Now().After(p.lastRefreshAt.Add(p.ttl))
+func (p *Impl[T]) isExpired(now time.Time) bool {
+	return now.After(p.lastRefreshAt.Add(p.ttl))
 }

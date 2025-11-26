@@ -301,7 +301,7 @@ func (c *ClientImpl) applyRequestConfig(ctx context.Context, req *fasthttp.Reque
 // performRequest uses config timeout as fasthttp client timeout
 // ctx is checked after request to respect cancellation and deadlines
 func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg *RequestConfig) (Response, error) {
-	requestTimeTracker := timetrack.New()
+	requestTimeTracker := timetrack.New(ctx)
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
