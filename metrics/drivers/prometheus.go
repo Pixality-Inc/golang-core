@@ -123,9 +123,10 @@ func (d *PrometheusDriver) NewSummary(
 }
 
 func (d *PrometheusDriver) NewTimer(
+	clock clock.Clock,
 	observer metrics.Observer,
 ) metrics.Timer {
-	return metrics.NewTimer(clock.New(), observer)
+	return metrics.NewTimer(clock, observer)
 }
 
 func (d *PrometheusDriver) getMetricsOpts(metricDescription metrics.MetricDescription) prometheus.Opts {

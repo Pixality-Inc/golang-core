@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/pixality-inc/golang-core/clock"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -13,5 +14,5 @@ type Driver interface {
 	NewGauge(description MetricDescription) Gauge
 	NewHistogram(description MetricDescription, options HistogramOptions) Histogram
 	NewSummary(description MetricDescription, options SummaryOptions) Summary
-	NewTimer(observer Observer) Timer
+	NewTimer(clock clock.Clock, observer Observer) Timer
 }
