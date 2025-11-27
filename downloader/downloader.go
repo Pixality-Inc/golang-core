@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 
+	"github.com/pixality-inc/golang-core/circuit_breaker"
 	http2 "github.com/pixality-inc/golang-core/http_client"
 	"github.com/pixality-inc/golang-core/logger"
 )
@@ -17,10 +18,10 @@ type Impl struct {
 	http http2.Client
 }
 
-func NewDownloader(config http2.Config) (Downloader, error) {
+func NewDownloader(config http2.Config, cb circuit_breaker.CircuitBreaker) (Downloader, error) {
 	log := logger.NewLoggableImplWithService("downloader")
 
-	httpClient, err := http2.NewClientImpl(log, config)
+	httpClient, err := http2.NewClientImpl(log, config, cb)
 	if err != nil {
 		return nil, err
 	}

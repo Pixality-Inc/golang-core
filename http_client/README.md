@@ -21,7 +21,7 @@ config := &http_client.ConfigYaml{
 
 // create client
 log := logger.NewLoggableImplWithService("my-service")
-client, err := http_client.NewClientImpl(log, config)
+client, err := http_client.NewClientImpl(log, config, nil)
 if err != nil {
     panic(err)
 }

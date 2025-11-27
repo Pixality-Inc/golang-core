@@ -25,7 +25,7 @@ func TestClientImpl_Put(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Put(context.Background(), "/test",
@@ -45,7 +45,7 @@ func TestClientImpl_Patch(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Patch(context.Background(), "/test",
@@ -65,7 +65,7 @@ func TestClientImpl_Delete(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Delete(context.Background(), "/test")
@@ -85,7 +85,7 @@ func TestClientImpl_Head(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Head(context.Background(), "/test")
@@ -105,7 +105,7 @@ func TestClientImpl_Options(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Options(context.Background(), "/test")
@@ -130,7 +130,7 @@ func TestClientImpl_WithJsonBody(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	data := testData{Name: "John", Age: 30}
@@ -152,7 +152,7 @@ func TestClientImpl_MultipleOptions(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test",
@@ -181,6 +181,7 @@ func TestClientImpl_RetryOnServerError(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -188,7 +189,7 @@ func TestClientImpl_RetryOnServerError(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test")
@@ -210,6 +211,7 @@ func TestClientImpl_RetryExhaustion(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -217,7 +219,7 @@ func TestClientImpl_RetryExhaustion(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test")
@@ -240,6 +242,7 @@ func TestClientImpl_RetryContextCancellation(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        10,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -247,7 +250,7 @@ func TestClientImpl_RetryContextCancellation(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
@@ -272,6 +275,7 @@ func TestClientImpl_NoRetryOn4xx(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -279,7 +283,7 @@ func TestClientImpl_NoRetryOn4xx(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	_, err = client.Get(context.Background(), "/test")
@@ -307,6 +311,7 @@ func TestClientImpl_RetryOn429(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -314,7 +319,7 @@ func TestClientImpl_RetryOn429(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test")

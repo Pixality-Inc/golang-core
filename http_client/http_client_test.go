@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pixality-inc/golang-core/circuit_breaker"
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/retry"
 	"github.com/stretchr/testify/assert"
@@ -26,29 +27,30 @@ type testConfig struct {
 	RetryPolicyValue   retry.Policy
 }
 
-func (c *testConfig) BaseUrl() string                    { return c.baseUrl }
-func (c *testConfig) Timeout() time.Duration             { return c.timeout }
-func (c *testConfig) InsecureSkipVerify() bool           { return c.insecureSkipVerify }
-func (c *testConfig) BaseHeaders() Headers               { return c.baseHeaders }
-func (c *testConfig) UseRequestId() bool                 { return c.useRequestId }
-func (c *testConfig) Name() string                       { return "test_client" }
-func (c *testConfig) MaxConnsPerHost() int               { return DefaultMaxConnsPerHost }
-func (c *testConfig) MaxIdleConnDuration() time.Duration { return DefaultMaxIdleConnDuration }
-func (c *testConfig) ReadTimeout() time.Duration         { return c.timeout }
-func (c *testConfig) WriteTimeout() time.Duration        { return c.timeout }
-func (c *testConfig) MaxConnWaitTimeout() time.Duration  { return 0 }
-func (c *testConfig) RetryPolicy() retry.Policy          { return c.RetryPolicyValue }
-func (c *testConfig) ReadBufferSize() int                { return DefaultReadBufferSize }
-func (c *testConfig) WriteBufferSize() int               { return DefaultWriteBufferSize }
-func (c *testConfig) MaxResponseBodySize() int           { return DefaultMaxResponseBodySize }
-func (c *testConfig) MaxConnDuration() time.Duration     { return DefaultMaxConnDuration }
-func (c *testConfig) StreamResponseBody() bool           { return false }
-func (c *testConfig) TLSMinVersion() uint16              { return 0 }
-func (c *testConfig) TLSMaxVersion() uint16              { return 0 }
-func (c *testConfig) TLSServerName() string              { return "" }
-func (c *testConfig) TLSRootCAFile() string              { return "" }
-func (c *testConfig) TLSClientCertFile() string          { return "" }
-func (c *testConfig) TLSClientKeyFile() string           { return "" }
+func (c *testConfig) BaseUrl() string                        { return c.baseUrl }
+func (c *testConfig) Timeout() time.Duration                 { return c.timeout }
+func (c *testConfig) InsecureSkipVerify() bool               { return c.insecureSkipVerify }
+func (c *testConfig) BaseHeaders() Headers                   { return c.baseHeaders }
+func (c *testConfig) UseRequestId() bool                     { return c.useRequestId }
+func (c *testConfig) Name() string                           { return "test_client" }
+func (c *testConfig) MaxConnsPerHost() int                   { return DefaultMaxConnsPerHost }
+func (c *testConfig) MaxIdleConnDuration() time.Duration     { return DefaultMaxIdleConnDuration }
+func (c *testConfig) ReadTimeout() time.Duration             { return c.timeout }
+func (c *testConfig) WriteTimeout() time.Duration            { return c.timeout }
+func (c *testConfig) MaxConnWaitTimeout() time.Duration      { return 0 }
+func (c *testConfig) RetryPolicy() retry.Policy              { return c.RetryPolicyValue }
+func (c *testConfig) ReadBufferSize() int                    { return DefaultReadBufferSize }
+func (c *testConfig) WriteBufferSize() int                   { return DefaultWriteBufferSize }
+func (c *testConfig) MaxResponseBodySize() int               { return DefaultMaxResponseBodySize }
+func (c *testConfig) MaxConnDuration() time.Duration         { return DefaultMaxConnDuration }
+func (c *testConfig) StreamResponseBody() bool               { return false }
+func (c *testConfig) TLSMinVersion() uint16                  { return 0 }
+func (c *testConfig) TLSMaxVersion() uint16                  { return 0 }
+func (c *testConfig) TLSServerName() string                  { return "" }
+func (c *testConfig) TLSRootCAFile() string                  { return "" }
+func (c *testConfig) TLSClientCertFile() string              { return "" }
+func (c *testConfig) TLSClientKeyFile() string               { return "" }
+func (c *testConfig) CircuitBreaker() circuit_breaker.Config { return nil }
 
 func newTestConfig(baseUrl string) *testConfig {
 	return &testConfig{
@@ -76,7 +78,7 @@ func TestClientImpl_Get(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test",
@@ -107,7 +109,7 @@ func TestClientImpl_Post(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Post(context.Background(), "/test",
@@ -139,7 +141,7 @@ func TestClientImpl_PostMultipart(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	formData := NewFormDataImpl()
@@ -167,7 +169,7 @@ func TestClientImpl_ErrorHandling_NotFound(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -189,7 +191,7 @@ func TestClientImpl_ErrorHandling_BadRequest(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -211,7 +213,7 @@ func TestClientImpl_ErrorHandling_ServerError(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -236,7 +238,7 @@ func TestClientImpl_Headers(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	_, err = client.Get(context.Background(), "/test",
@@ -255,7 +257,7 @@ func TestClientImpl_Do(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config)
+	client, err := NewClientImpl(log, config, nil)
 	require.NoError(t, err)
 
 	resp, err := client.Do(context.Background(), "PROPFIND", "/test")
