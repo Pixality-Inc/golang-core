@@ -98,7 +98,10 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 
 		log.Debugf("Action '%s' executed in %s", action.Name, util.FormatDuration(duration))
 
-		result.ActionsResponses[action.Name] = actionResponse.WithDuration(duration.Milliseconds())
+		result.ActionsResponses[action.Name] = actionResponse.
+			WithStartedAt(track.Start).
+			WithFinishedAt(track.End).
+			WithDuration(duration)
 	}
 
 	return result, nil

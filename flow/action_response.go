@@ -1,22 +1,28 @@
 package flow
 
+import "time"
+
 type ActionResponse struct {
-	ErrorCode int    `json:"error_code"`
-	Stdout    string `json:"stdout"`
-	Stderr    string `json:"stderr"`
-	Duration  int32  `json:"duration"`
-	Skipped   bool   `json:"skipped"`
-	Result    string `json:"result"`
+	ErrorCode  int           `json:"error_code"`
+	Stdout     string        `json:"stdout"`
+	Stderr     string        `json:"stderr"`
+	Skipped    bool          `json:"skipped"`
+	StartedAt  time.Time     `json:"started_at"`
+	FinishedAt time.Time     `json:"finished_at"`
+	Duration   time.Duration `json:"duration"`
+	Result     string        `json:"result"`
 }
 
 func NewActionResponse() *ActionResponse {
 	return &ActionResponse{
-		ErrorCode: 0,
-		Stdout:    "",
-		Stderr:    "",
-		Duration:  0,
-		Skipped:   false,
-		Result:    "",
+		ErrorCode:  0,
+		Stdout:     "",
+		Stderr:     "",
+		Skipped:    false,
+		StartedAt:  time.Time{},
+		FinishedAt: time.Time{},
+		Duration:   0,
+		Result:     "",
 	}
 }
 
@@ -38,8 +44,20 @@ func (r *ActionResponse) WithStderr(stderr string) *ActionResponse {
 	return r
 }
 
-func (r *ActionResponse) WithDuration(millis int64) *ActionResponse {
-	r.Duration = int32(millis) //nolint:gosec
+func (r *ActionResponse) WithStartedAt(startedAt time.Time) *ActionResponse {
+	r.StartedAt = startedAt
+
+	return r
+}
+
+func (r *ActionResponse) WithFinishedAt(finishedAt time.Time) *ActionResponse {
+	r.FinishedAt = finishedAt
+
+	return r
+}
+
+func (r *ActionResponse) WithDuration(duration time.Duration) *ActionResponse {
+	r.Duration = duration
 
 	return r
 }
