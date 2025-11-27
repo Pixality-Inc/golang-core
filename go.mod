@@ -31,7 +31,6 @@ require (
 	github.com/sony/gobreaker/v2 v2.3.0
 	github.com/stretchr/testify v1.11.1
 	github.com/valyala/fasthttp v1.68.0
-	go.temporal.io/api v1.53.0
 	go.temporal.io/sdk v1.37.0
 	go.uber.org/mock v0.6.0
 	google.golang.org/api v0.256.0
@@ -115,6 +114,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.37.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
+	go.temporal.io/api v1.53.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
