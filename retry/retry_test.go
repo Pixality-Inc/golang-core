@@ -242,6 +242,7 @@ func TestDo_SuccessFirstAttempt(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -268,6 +269,7 @@ func TestDo_RetryWithSuccess(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -297,6 +299,7 @@ func TestDo_ExhaustAllAttempts(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -323,6 +326,7 @@ func TestDo_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        10,
 		InitialIntervalValue:    50 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -395,6 +399,7 @@ func TestDoWithCondition_CustomShouldRetry(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -433,6 +438,7 @@ func TestDoWithCondition_SuccessFirstAttempt(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -467,6 +473,7 @@ func TestDoWithCondition_RetryWithSuccess(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -504,6 +511,7 @@ func TestDoWithCondition_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	policy := &PolicyImpl{
+		EnabledValue:            true,
 		MaxAttemptsValue:        10,
 		InitialIntervalValue:    50 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,

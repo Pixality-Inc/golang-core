@@ -181,6 +181,7 @@ func TestClientImpl_RetryOnServerError(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -210,6 +211,7 @@ func TestClientImpl_RetryExhaustion(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -240,6 +242,7 @@ func TestClientImpl_RetryContextCancellation(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        10,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -272,6 +275,7 @@ func TestClientImpl_NoRetryOn4xx(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,
@@ -307,6 +311,7 @@ func TestClientImpl_RetryOn429(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	config.RetryPolicyValue = &retry.ConfigYaml{
+		EnabledValue:            true,
 		MaxAttemptsValue:        3,
 		InitialIntervalValue:    10 * time.Millisecond,
 		BackoffCoefficientValue: 2.0,

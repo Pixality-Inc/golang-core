@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pixality-inc/golang-core/circuit_breaker"
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/retry"
 	"github.com/stretchr/testify/assert"
@@ -26,29 +27,41 @@ type testConfig struct {
 	RetryPolicyValue   retry.Policy
 }
 
-func (c *testConfig) BaseUrl() string                    { return c.baseUrl }
-func (c *testConfig) Timeout() time.Duration             { return c.timeout }
-func (c *testConfig) InsecureSkipVerify() bool           { return c.insecureSkipVerify }
-func (c *testConfig) BaseHeaders() Headers               { return c.baseHeaders }
-func (c *testConfig) UseRequestId() bool                 { return c.useRequestId }
-func (c *testConfig) Name() string                       { return "test_client" }
-func (c *testConfig) MaxConnsPerHost() int               { return DefaultMaxConnsPerHost }
-func (c *testConfig) MaxIdleConnDuration() time.Duration { return DefaultMaxIdleConnDuration }
-func (c *testConfig) ReadTimeout() time.Duration         { return c.timeout }
-func (c *testConfig) WriteTimeout() time.Duration        { return c.timeout }
-func (c *testConfig) MaxConnWaitTimeout() time.Duration  { return 0 }
-func (c *testConfig) RetryPolicy() retry.Policy          { return c.RetryPolicyValue }
-func (c *testConfig) ReadBufferSize() int                { return DefaultReadBufferSize }
-func (c *testConfig) WriteBufferSize() int               { return DefaultWriteBufferSize }
-func (c *testConfig) MaxResponseBodySize() int           { return DefaultMaxResponseBodySize }
-func (c *testConfig) MaxConnDuration() time.Duration     { return DefaultMaxConnDuration }
-func (c *testConfig) StreamResponseBody() bool           { return false }
-func (c *testConfig) TLSMinVersion() uint16              { return 0 }
-func (c *testConfig) TLSMaxVersion() uint16              { return 0 }
-func (c *testConfig) TLSServerName() string              { return "" }
-func (c *testConfig) TLSRootCAFile() string              { return "" }
-func (c *testConfig) TLSClientCertFile() string          { return "" }
-func (c *testConfig) TLSClientKeyFile() string           { return "" }
+// testConfigWithCB is testConfig with circuit breaker config
+type testConfigWithCB struct {
+	*testConfig
+
+	cbConfig circuit_breaker.Config
+}
+
+func (c *testConfigWithCB) CircuitBreaker() circuit_breaker.Config {
+	return c.cbConfig
+}
+
+func (c *testConfig) BaseUrl() string                        { return c.baseUrl }
+func (c *testConfig) Timeout() time.Duration                 { return c.timeout }
+func (c *testConfig) InsecureSkipVerify() bool               { return c.insecureSkipVerify }
+func (c *testConfig) BaseHeaders() Headers                   { return c.baseHeaders }
+func (c *testConfig) UseRequestId() bool                     { return c.useRequestId }
+func (c *testConfig) Name() string                           { return "test_client" }
+func (c *testConfig) MaxConnsPerHost() int                   { return DefaultMaxConnsPerHost }
+func (c *testConfig) MaxIdleConnDuration() time.Duration     { return DefaultMaxIdleConnDuration }
+func (c *testConfig) ReadTimeout() time.Duration             { return c.timeout }
+func (c *testConfig) WriteTimeout() time.Duration            { return c.timeout }
+func (c *testConfig) MaxConnWaitTimeout() time.Duration      { return 0 }
+func (c *testConfig) RetryPolicy() retry.Policy              { return c.RetryPolicyValue }
+func (c *testConfig) ReadBufferSize() int                    { return DefaultReadBufferSize }
+func (c *testConfig) WriteBufferSize() int                   { return DefaultWriteBufferSize }
+func (c *testConfig) MaxResponseBodySize() int               { return DefaultMaxResponseBodySize }
+func (c *testConfig) MaxConnDuration() time.Duration         { return DefaultMaxConnDuration }
+func (c *testConfig) StreamResponseBody() bool               { return false }
+func (c *testConfig) TLSMinVersion() uint16                  { return 0 }
+func (c *testConfig) TLSMaxVersion() uint16                  { return 0 }
+func (c *testConfig) TLSServerName() string                  { return "" }
+func (c *testConfig) TLSRootCAFile() string                  { return "" }
+func (c *testConfig) TLSClientCertFile() string              { return "" }
+func (c *testConfig) TLSClientKeyFile() string               { return "" }
+func (c *testConfig) CircuitBreaker() circuit_breaker.Config { return nil }
 
 func newTestConfig(baseUrl string) *testConfig {
 	return &testConfig{
@@ -328,4 +341,53 @@ func TestAsJson_InvalidJson(t *testing.T) {
 
 	_, err := AsJson(response, testEntity{})
 	require.Error(t, err)
+}
+
+func TestNewClientImpl_WithCircuitBreakerOption(t *testing.T) {
+	t.Parallel()
+
+	log := logger.NewLoggableImplWithService("test")
+	config := newTestConfig("")
+
+	// custom circuit breaker
+	customCB := circuit_breaker.New(&circuit_breaker.ConfigYaml{
+		EnabledValue:             true,
+		NameValue:                "custom_cb",
+		ConsecutiveFailuresValue: 3,
+	}, nil)
+
+	// create client with custom CB via option
+	client, err := NewClientImpl(log, config, WithCircuitBreaker(customCB))
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.NotNil(t, client.circuitBreaker)
+	assert.Equal(t, customCB, client.circuitBreaker)
+}
+
+func TestNewClientImpl_WithCircuitBreakerFromConfig(t *testing.T) {
+	t.Parallel()
+
+	log := logger.NewLoggableImplWithService("test")
+
+	// config with circuit breaker settings
+	config := &testConfig{
+		timeout: 5 * time.Second,
+	}
+
+	cbConfig := &circuit_breaker.ConfigYaml{
+		EnabledValue:             true,
+		NameValue:                "http_test",
+		ConsecutiveFailuresValue: 5,
+	}
+
+	configWithCB := &testConfigWithCB{
+		testConfig: config,
+		cbConfig:   cbConfig,
+	}
+
+	// create client - CB should be created automatically from config
+	client, err := NewClientImpl(log, configWithCB)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.NotNil(t, client.circuitBreaker, "circuit breaker should be created from config")
 }

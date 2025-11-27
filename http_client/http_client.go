@@ -12,6 +12,7 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"github.com/pixality-inc/golang-core/circuit_breaker"
 	http2 "github.com/pixality-inc/golang-core/http"
 	"github.com/pixality-inc/golang-core/json"
 	"github.com/pixality-inc/golang-core/logger"
@@ -41,15 +42,29 @@ type Client interface {
 }
 
 type ClientImpl struct {
-	log    logger.Loggable
-	config Config
-	client *fasthttp.Client
+	log            logger.Loggable
+	config         Config
+	client         *fasthttp.Client
+	circuitBreaker circuit_breaker.CircuitBreaker
 }
 
 func NewClientImpl(
 	log logger.Loggable,
 	config Config,
+	opts ...Option,
 ) (*ClientImpl, error) {
+	clientConfig := applyClientOptions(opts...)
+
+	// priority: option > default from config
+	var circuitBreaker circuit_breaker.CircuitBreaker
+
+	switch {
+	case clientConfig.CircuitBreaker != nil:
+		circuitBreaker = clientConfig.CircuitBreaker
+	case config.CircuitBreaker() != nil:
+		circuitBreaker = NewCircuitBreaker(config.CircuitBreaker(), nil)
+	}
+
 	readTimeout := config.ReadTimeout()
 	if readTimeout == 0 {
 		readTimeout = config.Timeout()
@@ -84,9 +99,10 @@ func NewClientImpl(
 	client.TLSConfig = tlsConfig
 
 	return &ClientImpl{
-		log:    log,
-		config: config,
-		client: client,
+		log:            log,
+		config:         config,
+		client:         client,
+		circuitBreaker: circuitBreaker,
 	}, nil
 }
 
@@ -198,26 +214,44 @@ func (c *ClientImpl) Options(ctx context.Context, uri string, opts ...RequestOpt
 func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...RequestOption) (Response, error) {
 	cfg := applyOptions(opts...)
 
-	if c.config.RetryPolicy() != nil {
-		return retry.DoWithCondition(
-			ctx,
-			c.config.RetryPolicy(),
-			c.log,
-			func() (Response, error) {
-				return c.performRequest(ctx, method, uri, cfg)
-			},
-			func(response Response, err error) bool {
-				statusCode := 0
-				if response != nil {
-					statusCode = response.GetStatusCode()
-				}
+	executeRequest := func() (Response, error) {
+		if c.config.RetryPolicy() != nil {
+			return retry.DoWithCondition(
+				ctx,
+				c.config.RetryPolicy(),
+				c.log,
+				func() (Response, error) {
+					return c.performRequest(ctx, method, uri, cfg)
+				},
+				func(response Response, err error) bool {
+					statusCode := 0
+					if response != nil {
+						statusCode = response.GetStatusCode()
+					}
 
-				return retry.ShouldRetry(statusCode, err)
-			},
-		)
+					return retry.ShouldRetry(statusCode, err)
+				},
+			)
+		}
+
+		return c.performRequest(ctx, method, uri, cfg)
 	}
 
-	return c.performRequest(ctx, method, uri, cfg)
+	if c.circuitBreaker != nil {
+		var response Response
+
+		err := circuit_breaker.Execute(c.circuitBreaker, func() error {
+			var execErr error
+
+			response, execErr = executeRequest()
+
+			return execErr
+		})
+
+		return response, err
+	}
+
+	return executeRequest()
 }
 
 func (c *ClientImpl) makeUrl(uri string) string {
