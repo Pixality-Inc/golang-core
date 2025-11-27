@@ -3,12 +3,14 @@ package http_client
 import (
 	"maps"
 
+	"github.com/pixality-inc/golang-core/circuit_breaker"
 	"github.com/pixality-inc/golang-core/json"
 	"github.com/pixality-inc/golang-core/logger"
 )
 
 var jsonBodyLogger = logger.NewLoggableImplWithService("http_client")
 
+// RequestConfig configuration for individual http requests
 type RequestConfig struct {
 	QueryParams QueryParams
 	Headers     Headers
@@ -16,7 +18,16 @@ type RequestConfig struct {
 	FormData    FormData
 }
 
+// RequestOption option for configuring individual http requests
 type RequestOption func(*RequestConfig)
+
+// ClientConfig configuration for http client constructor
+type ClientConfig struct {
+	CircuitBreaker circuit_breaker.CircuitBreaker
+}
+
+// Option option for configuring http client
+type Option func(*ClientConfig)
 
 func WithBody(body []byte) RequestOption {
 	return func(cfg *RequestConfig) {
@@ -86,6 +97,25 @@ func WithQueryParams(params QueryParams) RequestOption {
 
 		maps.Copy(cfg.QueryParams, params)
 	}
+}
+
+// WithCircuitBreaker sets custom circuit breaker for http client
+func WithCircuitBreaker(cb circuit_breaker.CircuitBreaker) Option {
+	return func(cfg *ClientConfig) {
+		cfg.CircuitBreaker = cb
+	}
+}
+
+func applyClientOptions(opts ...Option) *ClientConfig {
+	cfg := &ClientConfig{}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(cfg)
+		}
+	}
+
+	return cfg
 }
 
 func applyOptions(opts ...RequestOption) *RequestConfig {

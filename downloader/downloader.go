@@ -21,7 +21,7 @@ type Impl struct {
 func NewDownloader(config http2.Config, cb circuit_breaker.CircuitBreaker) (Downloader, error) {
 	log := logger.NewLoggableImplWithService("downloader")
 
-	httpClient, err := http2.NewClientImpl(log, config, cb)
+	httpClient, err := http2.NewClientImpl(log, config, cb) // cb passed for backward compatibility, will be deprecated
 	if err != nil {
 		return nil, err
 	}

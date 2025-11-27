@@ -27,6 +27,17 @@ type testConfig struct {
 	RetryPolicyValue   retry.Policy
 }
 
+// testConfigWithCB is testConfig with circuit breaker config
+type testConfigWithCB struct {
+	*testConfig
+
+	cbConfig circuit_breaker.Config
+}
+
+func (c *testConfigWithCB) CircuitBreaker() circuit_breaker.Config {
+	return c.cbConfig
+}
+
 func (c *testConfig) BaseUrl() string                        { return c.baseUrl }
 func (c *testConfig) Timeout() time.Duration                 { return c.timeout }
 func (c *testConfig) InsecureSkipVerify() bool               { return c.insecureSkipVerify }
@@ -330,4 +341,53 @@ func TestAsJson_InvalidJson(t *testing.T) {
 
 	_, err := AsJson(response, testEntity{})
 	require.Error(t, err)
+}
+
+func TestNewClientImpl_WithCircuitBreakerOption(t *testing.T) {
+	t.Parallel()
+
+	log := logger.NewLoggableImplWithService("test")
+	config := newTestConfig("")
+
+	// custom circuit breaker
+	customCB := circuit_breaker.New(&circuit_breaker.ConfigYaml{
+		EnabledValue:             true,
+		NameValue:                "custom_cb",
+		ConsecutiveFailuresValue: 3,
+	}, nil)
+
+	// create client with custom CB via option
+	client, err := NewClientImpl(log, config, nil, WithCircuitBreaker(customCB))
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.NotNil(t, client.circuitBreaker)
+	assert.Equal(t, customCB, client.circuitBreaker)
+}
+
+func TestNewClientImpl_WithCircuitBreakerFromConfig(t *testing.T) {
+	t.Parallel()
+
+	log := logger.NewLoggableImplWithService("test")
+
+	// config with circuit breaker settings
+	config := &testConfig{
+		timeout: 5 * time.Second,
+	}
+
+	cbConfig := &circuit_breaker.ConfigYaml{
+		EnabledValue:             true,
+		NameValue:                "http_test",
+		ConsecutiveFailuresValue: 5,
+	}
+
+	configWithCB := &testConfigWithCB{
+		testConfig: config,
+		cbConfig:   cbConfig,
+	}
+
+	// create client - CB should be created automatically from config
+	client, err := NewClientImpl(log, configWithCB, nil)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.NotNil(t, client.circuitBreaker, "circuit breaker should be created from config")
 }

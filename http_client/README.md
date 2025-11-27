@@ -123,6 +123,60 @@ config := &http_client.ConfigYaml{
 }
 ```
 
+### Circuit Breaker Configuration
+
+The HTTP client supports circuit breaker pattern to protect against cascading failures:
+
+```go
+import (
+    "github.com/pixality-inc/golang-core/circuit_breaker"
+    "github.com/pixality-inc/golang-core/http_client"
+)
+
+// option 1: circuit breaker from config (automatic creation)
+config := &http_client.ConfigYaml{
+    BaseUrlValue: "https://api.example.com",
+    TimeoutValue: 30 * time.Second,
+    CircuitBreakerValue: &circuit_breaker.ConfigYaml{
+        EnabledValue:             true,
+        NameValue:                "api-client",
+        ConsecutiveFailuresValue: 5,  // open after 5 consecutive failures
+        TimeoutValue:             60 * time.Second,  // try again after 60s
+    },
+}
+
+log := logger.NewLoggableImplWithService("my-service")
+client, err := http_client.NewClientImpl(log, config, nil)  // cb will be created from config
+```
+
+```go
+// option 2: custom circuit breaker via option
+cb := circuit_breaker.New(&circuit_breaker.ConfigYaml{
+    EnabledValue:             true,
+    NameValue:                "custom-cb",
+    ConsecutiveFailuresValue: 3,
+}, nil)
+
+client, err := http_client.NewClientImpl(
+    log, 
+    config, 
+    nil,  // deprecated parameter, use option instead
+    http_client.WithCircuitBreaker(cb),
+)
+```
+
+```go
+// option 3: backward compatibility - pass cb as parameter (deprecated)
+cb := http_client.NewCircuitBreaker(cbConfig, nil)
+client, err := http_client.NewClientImpl(log, config, cb)
+```
+
+The circuit breaker automatically filters HTTP-specific errors:
+- 4xx errors (client errors) - ignored, won't trigger circuit breaker
+- 5xx errors (server errors) - counted as failures
+- Network errors (timeout, connection refused) - counted as failures
+- Context cancellation - ignored, won't trigger circuit breaker
+
 ### Configuration Options
 
 | Option | Type | Default | Description |
@@ -139,6 +193,7 @@ config := &http_client.ConfigYaml{
 | `MaxConnWaitTimeout` | duration | 0 | Max time to wait for connection |
 | `BaseHeaders` | Headers | nil | Headers for all requests |
 | `RetryPolicy` | retry.Policy | nil | Retry configuration |
+| `CircuitBreaker` | circuit_breaker.Config | nil | Circuit breaker configuration |
 | `StreamResponseBody` | bool | false | Stream response body (no buffering) |
 | `TLSMinVersion` | uint16 | 0 | Minimum TLS version (use TLSVersion* constants) |
 | `TLSMaxVersion` | uint16 | 0 | Maximum TLS version (use TLSVersion* constants) |

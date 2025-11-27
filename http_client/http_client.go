@@ -52,7 +52,22 @@ func NewClientImpl(
 	log logger.Loggable,
 	config Config,
 	cb circuit_breaker.CircuitBreaker,
+	opts ...Option,
 ) (*ClientImpl, error) {
+	clientConfig := applyClientOptions(opts...)
+
+	// priority: option > parameter > default from config
+	var circuitBreaker circuit_breaker.CircuitBreaker
+
+	switch {
+	case clientConfig.CircuitBreaker != nil:
+		circuitBreaker = clientConfig.CircuitBreaker
+	case cb != nil:
+		circuitBreaker = cb
+	case config.CircuitBreaker() != nil:
+		circuitBreaker = NewCircuitBreaker(config.CircuitBreaker(), nil)
+	}
+
 	readTimeout := config.ReadTimeout()
 	if readTimeout == 0 {
 		readTimeout = config.Timeout()
@@ -90,7 +105,7 @@ func NewClientImpl(
 		log:            log,
 		config:         config,
 		client:         client,
-		circuitBreaker: cb,
+		circuitBreaker: circuitBreaker,
 	}, nil
 }
 
