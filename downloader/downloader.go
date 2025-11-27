@@ -3,8 +3,7 @@ package downloader
 import (
 	"context"
 
-	"github.com/pixality-inc/golang-core/circuit_breaker"
-	http2 "github.com/pixality-inc/golang-core/http_client"
+	http "github.com/pixality-inc/golang-core/http_client"
 	"github.com/pixality-inc/golang-core/logger"
 )
 
@@ -14,21 +13,21 @@ type Downloader interface {
 }
 
 type Impl struct {
-	log  logger.Loggable
-	http http2.Client
+	log        logger.Loggable
+	httpClient http.Client
 }
 
-func NewDownloader(config http2.Config, cb circuit_breaker.CircuitBreaker) (Downloader, error) {
+func NewDownloader(config http.Config) (Downloader, error) {
 	log := logger.NewLoggableImplWithService("downloader")
 
-	httpClient, err := http2.NewClientImpl(log, config, cb) // cb passed for backward compatibility, will be deprecated
+	httpClient, err := http.NewClientImpl(log, config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Impl{
-		log:  log,
-		http: httpClient,
+		log:        log,
+		httpClient: httpClient,
 	}, nil
 }
 
@@ -37,7 +36,7 @@ func (c *Impl) Download(ctx context.Context, url string) ([]byte, error) {
 
 	log.Infof("Downloading from '%s'", url)
 
-	response, err := c.http.Get(ctx, url)
+	response, err := c.httpClient.Get(ctx, url)
 	if err != nil {
 		return nil, err
 	}

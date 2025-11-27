@@ -89,7 +89,7 @@ func TestClientImpl_Get(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test",
@@ -120,7 +120,7 @@ func TestClientImpl_Post(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Post(context.Background(), "/test",
@@ -152,7 +152,7 @@ func TestClientImpl_PostMultipart(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	formData := NewFormDataImpl()
@@ -180,7 +180,7 @@ func TestClientImpl_ErrorHandling_NotFound(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -202,7 +202,7 @@ func TestClientImpl_ErrorHandling_BadRequest(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -224,7 +224,7 @@ func TestClientImpl_ErrorHandling_ServerError(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Get(context.Background(), "/test", nil)
@@ -249,7 +249,7 @@ func TestClientImpl_Headers(t *testing.T) {
 	}
 
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	_, err = client.Get(context.Background(), "/test",
@@ -268,7 +268,7 @@ func TestClientImpl_Do(t *testing.T) {
 
 	config := newTestConfig(server.URL)
 	log := logger.NewLoggableImplWithService("test")
-	client, err := NewClientImpl(log, config, nil)
+	client, err := NewClientImpl(log, config)
 	require.NoError(t, err)
 
 	resp, err := client.Do(context.Background(), "PROPFIND", "/test")
@@ -357,7 +357,7 @@ func TestNewClientImpl_WithCircuitBreakerOption(t *testing.T) {
 	}, nil)
 
 	// create client with custom CB via option
-	client, err := NewClientImpl(log, config, nil, WithCircuitBreaker(customCB))
+	client, err := NewClientImpl(log, config, WithCircuitBreaker(customCB))
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	require.NotNil(t, client.circuitBreaker)
@@ -386,7 +386,7 @@ func TestNewClientImpl_WithCircuitBreakerFromConfig(t *testing.T) {
 	}
 
 	// create client - CB should be created automatically from config
-	client, err := NewClientImpl(log, configWithCB, nil)
+	client, err := NewClientImpl(log, configWithCB)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	require.NotNil(t, client.circuitBreaker, "circuit breaker should be created from config")

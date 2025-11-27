@@ -21,7 +21,7 @@ config := &http_client.ConfigYaml{
 
 // create client
 log := logger.NewLoggableImplWithService("my-service")
-client, err := http_client.NewClientImpl(log, config, nil)
+client, err := http_client.NewClientImpl(log, config)
 if err != nil {
     panic(err)
 }
@@ -146,7 +146,7 @@ config := &http_client.ConfigYaml{
 }
 
 log := logger.NewLoggableImplWithService("my-service")
-client, err := http_client.NewClientImpl(log, config, nil)  // cb will be created from config
+client, err := http_client.NewClientImpl(log, config)  // cb will be created from config
 ```
 
 ```go
@@ -160,15 +160,8 @@ cb := circuit_breaker.New(&circuit_breaker.ConfigYaml{
 client, err := http_client.NewClientImpl(
     log, 
     config, 
-    nil,  // deprecated parameter, use option instead
     http_client.WithCircuitBreaker(cb),
 )
-```
-
-```go
-// option 3: backward compatibility - pass cb as parameter (deprecated)
-cb := http_client.NewCircuitBreaker(cbConfig, nil)
-client, err := http_client.NewClientImpl(log, config, cb)
 ```
 
 The circuit breaker automatically filters HTTP-specific errors:
