@@ -656,7 +656,7 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 		if apiModel, ok := apiModels[modelName]; !ok {
 			return "", fmt.Errorf("%w: '%s' (%s)", errNoSchemaFound, modelName, modelNameSnake)
 		} else {
-			log.Infof("Adding schema component '%s' for model %s\n", modelNameSnake, modelName)
+			log.Infof("Adding schema component '%s' for model %s", modelNameSnake, modelName)
 
 			if err = describeModel(modelNameSnake, modelName, apiModel.Reflect); err != nil {
 				return "", err
