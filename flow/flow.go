@@ -91,7 +91,16 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 
 		actionResponse, err := f.runAction(ctx, env, action)
 		if err != nil {
-			return nil, fmt.Errorf("action '%s' failed in %s: %w", action.Name, util.FormatDuration(track.Finish()), err)
+			if actionResponse != nil {
+				duration := track.Finish()
+
+				result.ActionsResponses[action.Name] = actionResponse.
+					WithStartedAt(track.Start).
+					WithFinishedAt(track.End).
+					WithDuration(duration)
+			}
+
+			return result, fmt.Errorf("action '%s' failed in %s: %w", action.Name, util.FormatDuration(track.Finish()), err)
 		}
 
 		duration := track.Finish()
@@ -279,14 +288,15 @@ func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*
 	log.Debugf("Running command: %s", cmd.String())
 
 	exitCode, stdout, stderr, err := cli.ExecCommand(cmd, false)
-	if err != nil {
-		return nil, fmt.Errorf("%w: command '%s' for action '%s' failed: %w: %s", ErrCommandFailed, command, action.Name, err, stderr)
-	}
 
 	response := NewActionResponse().
 		WithExitCode(exitCode).
 		WithStdout(string(stdout)).
 		WithStderr(string(stderr))
+
+	if err != nil {
+		return response, fmt.Errorf("%w: command '%s' for action '%s' failed: %w: %s", ErrCommandFailed, command, action.Name, err, stderr)
+	}
 
 	if commandStdout != "" {
 		log.Debugf("Writing command '%s' stdout to %s", action.Name, commandStdout)
@@ -295,7 +305,7 @@ func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*
 
 		//nolint:gosec
 		if err = os.WriteFile(commandStdout, stdout, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("write command stdout '%s' to %s: %w", action.Name, commandStdout, err)
+			return response, fmt.Errorf("write command stdout '%s' to %s: %w", action.Name, commandStdout, err)
 		}
 	}
 
@@ -306,7 +316,7 @@ func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*
 
 		//nolint:gosec
 		if err = os.WriteFile(commandStderr, stderr, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("write command stderr '%s' to %s: %w", action.Name, commandStderr, err)
+			return response, fmt.Errorf("write command stderr '%s' to %s: %w", action.Name, commandStderr, err)
 		}
 	}
 

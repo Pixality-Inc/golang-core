@@ -982,10 +982,6 @@ func TestFlow(t *testing.T) {
 				}
 			}
 
-			if testCase.wantErr != nil {
-				require.Nil(t, result)
-			}
-
 			if testCase.wantErr == nil && testCase.wantResultLen > -1 {
 				require.NotNil(t, result)
 				require.Len(t, result.ActionsResponses, testCase.wantResultLen)
