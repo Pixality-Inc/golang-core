@@ -19,6 +19,9 @@ var (
 type Cli interface {
 	Path() string
 
+	Exec(ctx context.Context, args []string, options ...Option) (Result, error)
+
+	// RunCommand deprecated for backwards compatibility
 	RunCommand(
 		ctx context.Context,
 		env map[string]string,
@@ -45,7 +48,7 @@ func (c *Impl) Path() string {
 	return c.toolPath
 }
 
-func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...string) ([]byte, []byte, error) {
+func (c *Impl) Exec(ctx context.Context, args []string, options ...Option) (Result, error) {
 	cmdTimeTracker := timetrack.New(ctx)
 
 	log := c.log.GetLogger(ctx)
@@ -73,7 +76,13 @@ func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...st
 		return log.WithFields(fields)
 	}
 
-	cmd := c.buildCommand(ctx, env, args...)
+	request := NewRequest()
+
+	for _, option := range options {
+		option(request)
+	}
+
+	cmd := c.buildCommand(ctx, request, args)
 
 	command := cmd.String()
 
@@ -94,18 +103,33 @@ func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...st
 	default:
 	}
 
+	result := NewResult(exitCode, stdout, stderr)
+
 	if err != nil || exitCode != 0 {
 		baseLogger(false, exitCode, stdout, stderr).WithError(err).Error(ctx, command)
 
-		return stdout, stderr, err
+		return result, err
 	}
 
 	baseLogger(true, exitCode, stdout, stderr).Debug(command)
 
-	return stdout, stderr, nil
+	return result, nil
 }
 
-func (c *Impl) buildCommand(ctx context.Context, env map[string]string, args ...string) *exec.Cmd {
+func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...string) ([]byte, []byte, error) {
+	result, err := c.Exec(
+		ctx,
+		args,
+		WithEnvs(env),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return result.Stdout(), result.Stderr(), nil
+}
+
+func (c *Impl) buildCommand(ctx context.Context, request *Request, args []string) *exec.Cmd {
 	// #nosec G204
 	cmd := exec.CommandContext(
 		ctx,
@@ -113,14 +137,26 @@ func (c *Impl) buildCommand(ctx context.Context, env map[string]string, args ...
 		args...,
 	)
 
-	if env != nil {
+	if request.workDir != "" {
+		cmd.Dir = request.workDir
+	}
+
+	if len(request.envs) > 0 {
 		var envs []string
 
-		for k, v := range env {
+		for k, v := range request.envs {
 			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
 		}
 
 		cmd.Env = append(os.Environ(), envs...)
+	}
+
+	if request.stdout != nil {
+		cmd.Stdout = request.stdout
+	}
+
+	if request.stderr != nil {
+		cmd.Stderr = request.stderr
 	}
 
 	return cmd
