@@ -20,6 +20,16 @@ var (
 	ErrConfigLoad = errors.New("config.load", "loading config")
 )
 
+func NewConfigFromEnv[T any]() (*T, error) {
+	cfg := new(T)
+
+	if err := cleanenv.ReadEnv(cfg); err != nil {
+		return nil, errors.Join(ErrConfigRead, err)
+	}
+
+	return cfg, nil
+}
+
 func NewConfig[T any](filename string) (*T, error) {
 	cfg := new(T)
 
