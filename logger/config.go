@@ -15,6 +15,7 @@ const (
 type Format string
 
 const (
+	NoFormat   Format = ""
 	TextFormat Format = "text"
 	JsonFormat Format = "json"
 )

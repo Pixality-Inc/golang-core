@@ -278,14 +278,13 @@ func createLogger(
 	logger := zerolog.New(out)
 
 	switch format {
-	case TextFormat:
+	case JsonFormat:
+	case TextFormat, NoFormat:
 		logger = logger.Output(zerolog.ConsoleWriter{
 			Out:        out,
 			NoColor:    !withColors,
 			TimeFormat: time.RFC3339,
 		})
-
-	case JsonFormat:
 	}
 
 	with := logger.Level(level).With()
