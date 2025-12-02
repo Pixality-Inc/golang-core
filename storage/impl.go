@@ -114,6 +114,23 @@ func (s *Impl) DownloadFile(ctx context.Context, path string, filename string) e
 	return nil
 }
 
+func (s *Impl) ReadDir(ctx context.Context, path string) ([]DirEntry, error) {
+	dirEntries, err := s.provider.ReadDir(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("storage.ReadDir(%s): %w", path, err)
+	}
+
+	return dirEntries, nil
+}
+
+func (s *Impl) MkDir(ctx context.Context, path string) error {
+	if err := s.provider.MkDir(ctx, path); err != nil {
+		return fmt.Errorf("storage.MkDir(%s): %w", path, err)
+	}
+
+	return nil
+}
+
 func (s *Impl) Compose(ctx context.Context, path string, chunks []string) error {
 	if err := s.provider.Compose(ctx, path, chunks); err != nil {
 		return fmt.Errorf("storage.Compose(%s, %s): %w", path, chunks, err)

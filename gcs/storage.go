@@ -3,6 +3,9 @@ package gcs
 import (
 	"context"
 	"io"
+
+	"github.com/pixality-inc/golang-core/storage"
+	"github.com/pixality-inc/golang-core/util"
 )
 
 type StorageProvider struct {
@@ -35,6 +38,15 @@ func (p *StorageProvider) Write(ctx context.Context, path string, file io.Reader
 
 func (p *StorageProvider) ReadFile(ctx context.Context, path string) (io.ReadCloser, error) {
 	return p.gcs.Download(ctx, path)
+}
+
+func (p *StorageProvider) ReadDir(_ context.Context, path string) ([]storage.DirEntry, error) {
+	return nil, util.ErrNotImplemented
+}
+
+func (p *StorageProvider) MkDir(ctx context.Context, path string) error {
+	// @todo
+	return nil
 }
 
 func (p *StorageProvider) Compose(ctx context.Context, path string, chunks []string) error {

@@ -82,7 +82,7 @@ func (p *OsProvider) Write(ctx context.Context, path string, file io.Reader) err
 	return nil
 }
 
-func (p *OsProvider) ReadFile(ctx context.Context, path string) (io.ReadCloser, error) {
+func (p *OsProvider) ReadFile(_ context.Context, path string) (io.ReadCloser, error) {
 	fullPath := p.getFullPath(path)
 
 	file, err := os.Open(fullPath)
@@ -91,6 +91,34 @@ func (p *OsProvider) ReadFile(ctx context.Context, path string) (io.ReadCloser, 
 	}
 
 	return file, nil
+}
+
+func (p *OsProvider) ReadDir(_ context.Context, path string) ([]storage.DirEntry, error) {
+	fullPath := p.getFullPath(path)
+
+	dirEntries, err := os.ReadDir(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("read dir: %w", err)
+	}
+
+	results := make([]storage.DirEntry, 0, len(dirEntries))
+
+	for index, dirEntry := range dirEntries {
+		results[index] = dirEntry
+	}
+
+	return results, nil
+}
+
+func (p *OsProvider) MkDir(_ context.Context, path string) error {
+	fullPath := p.getFullPath(path)
+
+	//nolint:gosec
+	if err := os.MkdirAll(fullPath, os.ModePerm); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+
+	return nil
 }
 
 func (p *OsProvider) Compose(_ context.Context, path string, chunks []string) error {

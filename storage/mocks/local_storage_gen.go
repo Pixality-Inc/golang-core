@@ -14,6 +14,7 @@ import (
 	io "io"
 	reflect "reflect"
 
+	storage "github.com/pixality-inc/golang-core/storage"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -154,6 +155,35 @@ func (m *MockLocalStorage) LocalPath(ctx context.Context, path string) (string, 
 func (mr *MockLocalStorageMockRecorder) LocalPath(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LocalPath", reflect.TypeOf((*MockLocalStorage)(nil).LocalPath), ctx, path)
+}
+
+// MkDir mocks base method.
+func (m *MockLocalStorage) MkDir(ctx context.Context, path string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MkDir", ctx, path)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MkDir indicates an expected call of MkDir.
+func (mr *MockLocalStorageMockRecorder) MkDir(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkDir", reflect.TypeOf((*MockLocalStorage)(nil).MkDir), ctx, path)
+}
+
+// ReadDir mocks base method.
+func (m *MockLocalStorage) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadDir", ctx, path)
+	ret0, _ := ret[0].([]storage.DirEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadDir indicates an expected call of ReadDir.
+func (mr *MockLocalStorageMockRecorder) ReadDir(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadDir", reflect.TypeOf((*MockLocalStorage)(nil).ReadDir), ctx, path)
 }
 
 // ReadFile mocks base method.
@@ -307,6 +337,35 @@ func (m *MockLocalStorageProvider) LocalPath(ctx context.Context, path string) (
 func (mr *MockLocalStorageProviderMockRecorder) LocalPath(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LocalPath", reflect.TypeOf((*MockLocalStorageProvider)(nil).LocalPath), ctx, path)
+}
+
+// MkDir mocks base method.
+func (m *MockLocalStorageProvider) MkDir(ctx context.Context, path string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MkDir", ctx, path)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MkDir indicates an expected call of MkDir.
+func (mr *MockLocalStorageProviderMockRecorder) MkDir(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkDir", reflect.TypeOf((*MockLocalStorageProvider)(nil).MkDir), ctx, path)
+}
+
+// ReadDir mocks base method.
+func (m *MockLocalStorageProvider) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadDir", ctx, path)
+	ret0, _ := ret[0].([]storage.DirEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadDir indicates an expected call of ReadDir.
+func (mr *MockLocalStorageProviderMockRecorder) ReadDir(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadDir", reflect.TypeOf((*MockLocalStorageProvider)(nil).ReadDir), ctx, path)
 }
 
 // ReadFile mocks base method.
