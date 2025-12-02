@@ -108,25 +108,27 @@ func (c *ControlFlowImpl) Shutdown() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	log := c.log.GetLogger(c.context)
+	if len(c.services) > 0 {
+		log := c.log.GetLogger(c.context)
 
-	log.Info("Shutting down...")
+		log.Info("Shutting down...")
 
-	wg := &sync.WaitGroup{}
+		wg := &sync.WaitGroup{}
 
-	for serviceName, service := range c.services {
-		wg.Go(func() {
-			log.Infof("Shutting down service %s...", serviceName)
+		for serviceName, service := range c.services {
+			wg.Go(func() {
+				log.Infof("Shutting down service %s...", serviceName)
 
-			if err := service.Stop(); err != nil {
-				log.WithError(err).Errorf("Failed to shutdown service %s", serviceName)
-			} else {
-				log.Infof("Service %s shut down successfully", serviceName)
-			}
-		})
+				if err := service.Stop(); err != nil {
+					log.WithError(err).Errorf("Failed to shutdown service %s", serviceName)
+				} else {
+					log.Infof("Service %s shut down successfully", serviceName)
+				}
+			})
+		}
+
+		wg.Wait()
+
+		log.Info("Shutdown complete")
 	}
-
-	wg.Wait()
-
-	log.Info("Shutdown complete")
 }
