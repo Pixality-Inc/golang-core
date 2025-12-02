@@ -101,7 +101,7 @@ func (p *OsProvider) ReadDir(_ context.Context, path string) ([]storage.DirEntry
 		return nil, fmt.Errorf("read dir: %w", err)
 	}
 
-	results := make([]storage.DirEntry, 0, len(dirEntries))
+	results := make([]storage.DirEntry, len(dirEntries))
 
 	for index, dirEntry := range dirEntries {
 		results[index] = dirEntry
