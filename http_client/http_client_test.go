@@ -52,7 +52,7 @@ func (c *testConfig) MaxConnWaitTimeout() time.Duration      { return 0 }
 func (c *testConfig) RetryPolicy() retry.Policy              { return c.RetryPolicyValue }
 func (c *testConfig) ReadBufferSize() int                    { return DefaultReadBufferSize }
 func (c *testConfig) WriteBufferSize() int                   { return DefaultWriteBufferSize }
-func (c *testConfig) MaxResponseBodySize() int               { return DefaultMaxResponseBodySize }
+func (c *testConfig) MaxResponseBodySize() int               { return 0 }
 func (c *testConfig) MaxConnDuration() time.Duration         { return DefaultMaxConnDuration }
 func (c *testConfig) StreamResponseBody() bool               { return false }
 func (c *testConfig) TLSMinVersion() uint16                  { return 0 }

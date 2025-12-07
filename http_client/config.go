@@ -13,8 +13,7 @@ const (
 	DefaultMaxIdleConnDuration = 90 * time.Second
 	DefaultReadBufferSize      = 4096
 	DefaultWriteBufferSize     = 4096
-	DefaultMaxResponseBodySize = 10 * 1024 * 1024 // 10 MB
-	DefaultMaxConnDuration     = 0                // no limit
+	DefaultMaxConnDuration     = 0 // no limit
 )
 
 const (
@@ -167,10 +166,6 @@ func (c *ConfigYaml) WriteBufferSize() int {
 }
 
 func (c *ConfigYaml) MaxResponseBodySize() int {
-	if c.MaxResponseBodySizeValue == 0 {
-		return DefaultMaxResponseBodySize
-	}
-
 	return c.MaxResponseBodySizeValue
 }
 
