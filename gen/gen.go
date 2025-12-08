@@ -94,6 +94,8 @@ type sourceFileField struct {
 	Seq        bool     `json:"seq"        yaml:"seq"`
 	Primary    bool     `json:"primary"    yaml:"primary"`
 	Unique     bool     `json:"unique"     yaml:"unique"`
+	Array      bool     `json:"array"      yaml:"array"`
+	ArraySize  int      `json:"array_size" yaml:"array_size"`
 	Nullable   bool     `json:"nullable"   yaml:"nullable"`
 	Enum       string   `json:"enum"       yaml:"enum"`
 	DataType   string   `json:"data_type"  yaml:"data_type"`
@@ -1328,6 +1330,20 @@ func (g *Gen) generateModelField(modelRequest *ModelRequest, field sourceFileFie
 			}
 		} else {
 			return nil, fmt.Errorf("%w: '%s'", errUnsupportedFieldType, field.Type)
+		}
+	}
+
+	if field.Array {
+		fmt.Println("[ARRAY]", field.ArraySize, field)
+
+		if field.ArraySize != 0 {
+			arraySizeStr := strconv.Itoa(field.ArraySize)
+
+			sqlDataType += "[" + arraySizeStr + "]"
+			modelDataType = "[" + arraySizeStr + "]" + modelDataType
+		} else {
+			sqlDataType += "[]"
+			modelDataType = "[]" + modelDataType
 		}
 	}
 
