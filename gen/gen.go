@@ -1334,8 +1334,6 @@ func (g *Gen) generateModelField(modelRequest *ModelRequest, field sourceFileFie
 	}
 
 	if field.Array {
-		fmt.Println("[ARRAY]", field.ArraySize, field)
-
 		if field.ArraySize != 0 {
 			arraySizeStr := strconv.Itoa(field.ArraySize)
 
