@@ -20,13 +20,6 @@ type Cli interface {
 	Path() string
 
 	Exec(ctx context.Context, args []string, options ...Option) (Result, error)
-
-	// RunCommand deprecated for backwards compatibility
-	RunCommand(
-		ctx context.Context,
-		env map[string]string,
-		args ...string,
-	) ([]byte, []byte, error)
 }
 
 type Impl struct {
@@ -114,19 +107,6 @@ func (c *Impl) Exec(ctx context.Context, args []string, options ...Option) (Resu
 	baseLogger(true, exitCode, stdout, stderr).Debug(command)
 
 	return result, nil
-}
-
-func (c *Impl) RunCommand(ctx context.Context, env map[string]string, args ...string) ([]byte, []byte, error) {
-	result, err := c.Exec(
-		ctx,
-		args,
-		WithEnvs(env),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return result.Stdout(), result.Stderr(), nil
 }
 
 func (c *Impl) buildCommand(ctx context.Context, request *Request, args []string) *exec.Cmd {
