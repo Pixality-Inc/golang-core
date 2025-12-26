@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -10,16 +11,52 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-const address = "127.0.0.1:18080"
+type testConfig struct {
+	addr string
+}
 
-type testConfig struct{}
+func newTestConfig(t *testing.T) *testConfig {
+	t.Helper()
 
-func (t *testConfig) Address() string {
-	return address
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	return &testConfig{
+		addr: addr,
+	}
+}
+
+func (c *testConfig) Address() string {
+	return c.addr
 }
 
 func (t *testConfig) ShutdownTimeout() time.Duration {
 	return time.Second
+}
+
+func waitServer(t *testing.T, addr string) {
+	t.Helper()
+
+	client := fasthttp.Client{}
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI("http://" + addr)
+	req.Header.SetMethod("GET")
+
+	require.Eventually(t, func() bool {
+		err := client.Do(req, resp)
+
+		return err == nil
+	}, time.Second, 10*time.Millisecond)
 }
 
 func testHandler(ctx *fasthttp.RequestCtx) {
@@ -30,28 +67,30 @@ func testHandler(ctx *fasthttp.RequestCtx) {
 func TestServer_ListenAndServe(t *testing.T) {
 	t.Parallel()
 
-	cfg := &testConfig{}
+	cfg := newTestConfig(t)
 
 	srv := http.New("test", cfg, testHandler)
 
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
 	go func() {
-		err := srv.ListenAndServe(t.Context())
+		err := srv.ListenAndServe(ctx)
 		if err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	waitServer(t, cfg.Address())
 
 	client := fasthttp.Client{}
 	req := fasthttp.AcquireRequest()
-
 	resp := fasthttp.AcquireResponse()
 
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	req.SetRequestURI("http://" + address)
+	req.SetRequestURI("http://" + cfg.Address())
 	req.Header.SetMethod("GET")
 
 	err := client.Do(req, resp)
@@ -63,17 +102,20 @@ func TestServer_ListenAndServe(t *testing.T) {
 func TestServer_Stop(t *testing.T) {
 	t.Parallel()
 
-	cfg := &testConfig{}
+	cfg := newTestConfig(t)
 
 	srv := http.New("test", cfg, testHandler)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	go func() {
-		_ = srv.ListenAndServe(ctx) // nolint:errcheck
+		err := srv.ListenAndServe(ctx)
+		if err != nil {
+			t.Errorf("server error: %v", err)
+		}
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	waitServer(t, cfg.Address())
 
 	cancel()
 
