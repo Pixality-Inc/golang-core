@@ -30,16 +30,52 @@ type Client interface {
 	Del(ctx context.Context, keys ...string) error
 }
 
-type PubSub struct {
-	pubsub *goredis.PubSub
+// Message represents a message received from a pubsub channel
+type Message struct {
+	Channel string
+	Payload string
 }
 
-func (p *PubSub) Channel() <-chan *goredis.Message {
+// pubsubChannelBuffer is the buffer size for the message channel
+const pubsubChannelBuffer = 100
+
+type PubSub struct {
+	pubsub  *goredis.PubSub
+	once    sync.Once
+	msgChan <-chan *Message
+}
+
+// Channel returns a channel for receiving messages.
+// The channel is created once and cached - multiple calls return the same channel.
+// The channel is buffered to prevent goroutine leaks if the reader is slow.
+// When the underlying connection closes the channel will be closed.
+func (p *PubSub) Channel() <-chan *Message {
 	if p == nil || p.pubsub == nil {
 		return nil
 	}
 
-	return p.pubsub.Channel()
+	p.once.Do(func() {
+		out := make(chan *Message, pubsubChannelBuffer)
+
+		go func() {
+			defer close(out)
+
+			for msg := range p.pubsub.Channel() {
+				select {
+				case out <- &Message{
+					Channel: msg.Channel,
+					Payload: msg.Payload,
+				}:
+				default:
+					// buffer full, drop message to prevent goroutine leak
+				}
+			}
+		}()
+
+		p.msgChan = out
+	})
+
+	return p.msgChan
 }
 
 func (p *PubSub) Close() error {
@@ -160,6 +196,10 @@ func (c *Impl) Subscribe(ctx context.Context, channels ...string) (*PubSub, erro
 		return nil, err
 	}
 
+	c.log.GetLogger(ctx).
+		WithField("channels", channels).
+		Trace("subscribing to channels")
+
 	return circuit_breaker.ExecuteWithResult(
 		c.circuitBreaker,
 		func() (*PubSub, error) {
@@ -180,6 +220,10 @@ func (c *Impl) Publish(ctx context.Context, channel string, message any) error {
 	if err := c.ensureConnected(ctx); err != nil {
 		return err
 	}
+
+	c.log.GetLogger(ctx).
+		WithField("channel", channel).
+		Trace("publishing message")
 
 	return circuit_breaker.Execute(c.circuitBreaker, func() error {
 		return c.client.Publish(ctx, channel, message).Err()
