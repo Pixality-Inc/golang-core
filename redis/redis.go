@@ -22,6 +22,24 @@ type Client interface {
 	GetString(ctx context.Context, key string) (string, error)
 
 	IsConnected() bool
+
+	Subscribe(ctx context.Context, channels ...string) *PubSub
+	Publish(ctx context.Context, channel string, message interface{}) error
+
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	Del(ctx context.Context, keys ...string) error
+}
+
+type PubSub struct {
+	pubsub *goredis.PubSub
+}
+
+func (p *PubSub) Channel() <-chan *goredis.Message {
+	return p.pubsub.Channel()
+}
+
+func (p *PubSub) Close() error {
+	return p.pubsub.Close()
 }
 
 type Impl struct {
@@ -196,4 +214,42 @@ func (c *Impl) getKey(ctx context.Context, key string) (*goredis.StringCmd, erro
 		},
 		nil,
 	)
+}
+
+func (c *Impl) Subscribe(ctx context.Context, channels ...string) *PubSub {
+	if err := c.ensureConnected(ctx); err != nil {
+		return nil
+	}
+
+	return &PubSub{pubsub: c.client.Subscribe(ctx, channels...)}
+}
+
+func (c *Impl) Publish(ctx context.Context, channel string, message interface{}) error {
+	if err := c.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	return circuit_breaker.Execute(c.circuitBreaker, func() error {
+		return c.client.Publish(ctx, channel, message).Err()
+	})
+}
+
+func (c *Impl) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return false, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
+		return c.client.SetNX(ctx, key, value, expiration).Result()
+	}, false)
+}
+
+func (c *Impl) Del(ctx context.Context, keys ...string) error {
+	if err := c.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	return circuit_breaker.Execute(c.circuitBreaker, func() error {
+		return c.client.Del(ctx, keys...).Err()
+	})
 }
