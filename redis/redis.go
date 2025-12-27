@@ -23,10 +23,10 @@ type Client interface {
 
 	IsConnected() bool
 
-	Subscribe(ctx context.Context, channels ...string) *PubSub
-	Publish(ctx context.Context, channel string, message interface{}) error
+	Subscribe(ctx context.Context, channels ...string) (*PubSub, error)
+	Publish(ctx context.Context, channel string, message any) error
 
-	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 	Del(ctx context.Context, keys ...string) error
 }
 
@@ -35,10 +35,18 @@ type PubSub struct {
 }
 
 func (p *PubSub) Channel() <-chan *goredis.Message {
+	if p == nil || p.pubsub == nil {
+		return nil
+	}
+
 	return p.pubsub.Channel()
 }
 
 func (p *PubSub) Close() error {
+	if p == nil || p.pubsub == nil {
+		return nil
+	}
+
 	return p.pubsub.Close()
 }
 
@@ -147,6 +155,57 @@ func Get[T any](ctx context.Context, client Client, key string, defaultValue T) 
 	return result, nil
 }
 
+func (c *Impl) Subscribe(ctx context.Context, channels ...string) (*PubSub, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return nil, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(
+		c.circuitBreaker,
+		func() (*PubSub, error) {
+			pubsub := c.client.Subscribe(ctx, channels...)
+			if _, err := pubsub.Receive(ctx); err != nil {
+				_ = pubsub.Close()
+
+				return nil, err
+			}
+
+			return &PubSub{pubsub: pubsub}, nil
+		},
+		nil,
+	)
+}
+
+func (c *Impl) Publish(ctx context.Context, channel string, message any) error {
+	if err := c.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	return circuit_breaker.Execute(c.circuitBreaker, func() error {
+		return c.client.Publish(ctx, channel, message).Err()
+	})
+}
+
+func (c *Impl) SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return false, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
+		return c.client.SetNX(ctx, key, value, expiration).Result()
+	}, false)
+}
+
+func (c *Impl) Del(ctx context.Context, keys ...string) error {
+	if err := c.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	return circuit_breaker.Execute(c.circuitBreaker, func() error {
+		return c.client.Del(ctx, keys...).Err()
+	})
+}
+
 func (c *Impl) ensureConnected(_ context.Context) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -214,42 +273,4 @@ func (c *Impl) getKey(ctx context.Context, key string) (*goredis.StringCmd, erro
 		},
 		nil,
 	)
-}
-
-func (c *Impl) Subscribe(ctx context.Context, channels ...string) *PubSub {
-	if err := c.ensureConnected(ctx); err != nil {
-		return nil
-	}
-
-	return &PubSub{pubsub: c.client.Subscribe(ctx, channels...)}
-}
-
-func (c *Impl) Publish(ctx context.Context, channel string, message interface{}) error {
-	if err := c.ensureConnected(ctx); err != nil {
-		return err
-	}
-
-	return circuit_breaker.Execute(c.circuitBreaker, func() error {
-		return c.client.Publish(ctx, channel, message).Err()
-	})
-}
-
-func (c *Impl) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
-	if err := c.ensureConnected(ctx); err != nil {
-		return false, err
-	}
-
-	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
-		return c.client.SetNX(ctx, key, value, expiration).Result()
-	}, false)
-}
-
-func (c *Impl) Del(ctx context.Context, keys ...string) error {
-	if err := c.ensureConnected(ctx); err != nil {
-		return err
-	}
-
-	return circuit_breaker.Execute(c.circuitBreaker, func() error {
-		return c.client.Del(ctx, keys...).Err()
-	})
 }
