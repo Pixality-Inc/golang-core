@@ -13,6 +13,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
+//go:generate mockgen -source=redis.go -destination=mocks/redis.go -package=redis_mock Client
 type Client interface {
 	Close()
 
