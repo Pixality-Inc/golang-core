@@ -10,12 +10,12 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-const address = "127.0.0.1:18080"
-
-type testConfig struct{}
+type testConfig struct {
+	address string
+}
 
 func (t *testConfig) Address() string {
-	return address
+	return t.address
 }
 
 func (t *testConfig) ShutdownTimeout() time.Duration {
@@ -30,7 +30,8 @@ func testHandler(ctx *fasthttp.RequestCtx) {
 func TestServer_ListenAndServe(t *testing.T) {
 	t.Parallel()
 
-	cfg := &testConfig{}
+	address := "127.0.0.1:18080"
+	cfg := &testConfig{address: address}
 
 	srv := http.New("test", cfg, testHandler)
 
@@ -63,7 +64,7 @@ func TestServer_ListenAndServe(t *testing.T) {
 func TestServer_Stop(t *testing.T) {
 	t.Parallel()
 
-	cfg := &testConfig{}
+	cfg := &testConfig{address: "127.0.0.1:18081"}
 
 	srv := http.New("test", cfg, testHandler)
 
@@ -84,7 +85,7 @@ func TestServer_Stop(t *testing.T) {
 func TestServer_Name(t *testing.T) {
 	t.Parallel()
 
-	cfg := &testConfig{}
+	cfg := &testConfig{address: "127.0.0.1:18082"}
 	srv := http.New("test-server", cfg, testHandler)
 	require.Equal(t, "test-server", srv.Name())
 }
