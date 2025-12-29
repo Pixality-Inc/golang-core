@@ -35,10 +35,18 @@ type PubSub struct {
 }
 
 func (p *PubSub) Channel() <-chan *Message {
+	if p == nil || p.pubsub == nil {
+		return nil
+	}
+
 	return p.pubsub.Channel()
 }
 
 func (p *PubSub) Close() error {
+	if p == nil || p.pubsub == nil {
+		return nil
+	}
+
 	return p.pubsub.Close()
 }
 
@@ -265,12 +273,24 @@ func Publish[T any](ctx context.Context, client Client, channel string, message 
 	return client.Publish(ctx, channel, string(buf))
 }
 
-func DecodeMessage[T any](msg *Message) (T, error) {
-	var value T
-
-	if err := json.Unmarshal([]byte(msg.Payload), &value); err != nil {
-		return value, err
+func Subscribe[T any](ctx context.Context, client Client, channels ...string) (<-chan T, func() error) {
+	pubsub := client.Subscribe(ctx, channels...)
+	if pubsub == nil {
+		return nil, func() error { return nil }
 	}
 
-	return value, nil
+	ch := make(chan T)
+
+	go func() {
+		defer close(ch)
+
+		for msg := range pubsub.Channel() {
+			var value T
+			if json.Unmarshal([]byte(msg.Payload), &value) == nil {
+				ch <- value
+			}
+		}
+	}()
+
+	return ch, pubsub.Close
 }
