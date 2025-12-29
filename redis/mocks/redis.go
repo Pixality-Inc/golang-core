@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	redis "github.com/pixality-inc/golang-core/redis"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -53,6 +54,25 @@ func (mr *MockClientMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockClient)(nil).Close))
 }
 
+// Del mocks base method.
+func (m *MockClient) Del(ctx context.Context, keys ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range keys {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Del", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Del indicates an expected call of Del.
+func (mr *MockClientMockRecorder) Del(ctx any, keys ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, keys...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Del", reflect.TypeOf((*MockClient)(nil).Del), varargs...)
+}
+
 // GetString mocks base method.
 func (m *MockClient) GetString(ctx context.Context, key string) (string, error) {
 	m.ctrl.T.Helper()
@@ -82,6 +102,20 @@ func (mr *MockClientMockRecorder) IsConnected() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsConnected", reflect.TypeOf((*MockClient)(nil).IsConnected))
 }
 
+// Publish mocks base method.
+func (m *MockClient) Publish(ctx context.Context, channel string, message any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Publish", ctx, channel, message)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Publish indicates an expected call of Publish.
+func (mr *MockClientMockRecorder) Publish(ctx, channel, message any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Publish", reflect.TypeOf((*MockClient)(nil).Publish), ctx, channel, message)
+}
+
 // SetKey mocks base method.
 func (m *MockClient) SetKey(ctx context.Context, key, value string, ttl time.Duration) error {
 	m.ctrl.T.Helper()
@@ -94,4 +128,38 @@ func (m *MockClient) SetKey(ctx context.Context, key, value string, ttl time.Dur
 func (mr *MockClientMockRecorder) SetKey(ctx, key, value, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetKey", reflect.TypeOf((*MockClient)(nil).SetKey), ctx, key, value, ttl)
+}
+
+// SetNX mocks base method.
+func (m *MockClient) SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNX", ctx, key, value, expiration)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetNX indicates an expected call of SetNX.
+func (mr *MockClientMockRecorder) SetNX(ctx, key, value, expiration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNX", reflect.TypeOf((*MockClient)(nil).SetNX), ctx, key, value, expiration)
+}
+
+// Subscribe mocks base method.
+func (m *MockClient) Subscribe(ctx context.Context, channels ...string) *redis.PubSub {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range channels {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Subscribe", varargs...)
+	ret0, _ := ret[0].(*redis.PubSub)
+	return ret0
+}
+
+// Subscribe indicates an expected call of Subscribe.
+func (mr *MockClientMockRecorder) Subscribe(ctx any, channels ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, channels...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockClient)(nil).Subscribe), varargs...)
 }
