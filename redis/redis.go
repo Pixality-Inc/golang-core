@@ -23,66 +23,22 @@ type Client interface {
 
 	IsConnected() bool
 
-	Subscribe(ctx context.Context, channels ...string) (*PubSub, error)
+	Subscribe(ctx context.Context, channels ...string) *PubSub
 	Publish(ctx context.Context, channel string, message any) error
 
 	SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 	Del(ctx context.Context, keys ...string) error
 }
 
-// Message represents a message received from a pubsub channel
-type Message struct {
-	Channel string
-	Payload string
-}
-
-// pubsubChannelBuffer is the buffer size for the message channel
-const pubsubChannelBuffer = 100
-
 type PubSub struct {
-	pubsub  *goredis.PubSub
-	once    sync.Once
-	msgChan <-chan *Message
+	pubsub *goredis.PubSub
 }
 
-// Channel returns a channel for receiving messages.
-// The channel is created once and cached - multiple calls return the same channel.
-// The channel is buffered to prevent goroutine leaks if the reader is slow.
-// When the underlying connection closes the channel will be closed.
 func (p *PubSub) Channel() <-chan *Message {
-	if p == nil || p.pubsub == nil {
-		return nil
-	}
-
-	p.once.Do(func() {
-		out := make(chan *Message, pubsubChannelBuffer)
-
-		go func() {
-			defer close(out)
-
-			for msg := range p.pubsub.Channel() {
-				select {
-				case out <- &Message{
-					Channel: msg.Channel,
-					Payload: msg.Payload,
-				}:
-				default:
-					// buffer full, drop message to prevent goroutine leak
-				}
-			}
-		}()
-
-		p.msgChan = out
-	})
-
-	return p.msgChan
+	return p.pubsub.Channel()
 }
 
 func (p *PubSub) Close() error {
-	if p == nil || p.pubsub == nil {
-		return nil
-	}
-
 	return p.pubsub.Close()
 }
 
@@ -163,67 +119,18 @@ func (c *Impl) GetString(ctx context.Context, key string) (string, error) {
 	return cmd.Val(), cmd.Err()
 }
 
-func Set[T any](ctx context.Context, client Client, key string, value T, ttl time.Duration) error {
-	buf, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-
-	strVal := string(buf)
-
-	return client.SetKey(ctx, key, strVal, ttl)
-}
-
-func Get[T any](ctx context.Context, client Client, key string, defaultValue T) (T, error) {
-	strValue, err := client.GetString(ctx, key)
-	if err != nil {
-		return defaultValue, err
-	}
-
-	bytes := []byte(strValue)
-
-	var result T
-
-	if err = json.Unmarshal(bytes, &result); err != nil {
-		return defaultValue, err
-	}
-
-	return result, nil
-}
-
-func (c *Impl) Subscribe(ctx context.Context, channels ...string) (*PubSub, error) {
+func (c *Impl) Subscribe(ctx context.Context, channels ...string) *PubSub {
 	if err := c.ensureConnected(ctx); err != nil {
-		return nil, err
+		return nil
 	}
 
-	c.log.GetLogger(ctx).
-		WithField("channels", channels).
-		Trace("subscribing to channels")
-
-	return circuit_breaker.ExecuteWithResult(
-		c.circuitBreaker,
-		func() (*PubSub, error) {
-			pubsub := c.client.Subscribe(ctx, channels...)
-			if _, err := pubsub.Receive(ctx); err != nil {
-				_ = pubsub.Close()
-
-				return nil, err
-			}
-
-			return &PubSub{pubsub: pubsub}, nil
-		},
-		nil,
-	)
+	return &PubSub{pubsub: c.client.Subscribe(ctx, channels...)}
 }
 
 func (c *Impl) Publish(ctx context.Context, channel string, message any) error {
 	if err := c.ensureConnected(ctx); err != nil {
 		return err
 	}
-
-	c.log.GetLogger(ctx).
-		WithField("channel", channel).
-		Trace("publishing message")
 
 	return circuit_breaker.Execute(c.circuitBreaker, func() error {
 		return c.client.Publish(ctx, channel, message).Err()
@@ -286,7 +193,7 @@ func (c *Impl) ensureConnected(_ context.Context) error {
 		defer cancel()
 
 		if err := c.client.Ping(pingCtx).Err(); err != nil {
-			// If Ping failed, clean up client and return error
+			// if ping failed clean up client and return error
 			c.client.Close()
 			c.client = nil
 
@@ -317,4 +224,53 @@ func (c *Impl) getKey(ctx context.Context, key string) (*goredis.StringCmd, erro
 		},
 		nil,
 	)
+}
+
+func Set[T any](ctx context.Context, client Client, key string, value T, ttl time.Duration) error {
+	buf, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	strVal := string(buf)
+
+	return client.SetKey(ctx, key, strVal, ttl)
+}
+
+func Get[T any](ctx context.Context, client Client, key string, defaultValue T) (T, error) {
+	strValue, err := client.GetString(ctx, key)
+	if err != nil {
+		return defaultValue, err
+	}
+
+	bytes := []byte(strValue)
+
+	var result T
+
+	if err = json.Unmarshal(bytes, &result); err != nil {
+		return defaultValue, err
+	}
+
+	return result, nil
+}
+
+type Message = goredis.Message
+
+func Publish[T any](ctx context.Context, client Client, channel string, message T) error {
+	buf, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	return client.Publish(ctx, channel, string(buf))
+}
+
+func DecodeMessage[T any](msg *Message) (T, error) {
+	var value T
+
+	if err := json.Unmarshal([]byte(msg.Payload), &value); err != nil {
+		return value, err
+	}
+
+	return value, nil
 }
