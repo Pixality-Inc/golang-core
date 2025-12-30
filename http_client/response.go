@@ -6,6 +6,7 @@ import (
 	"github.com/pixality-inc/golang-core/json"
 )
 
+//go:generate mockgen -destination mocks/response_gen.go -source response.go
 type Response interface {
 	GetStatusCode() int
 	GetHeaders() Headers
