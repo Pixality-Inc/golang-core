@@ -80,20 +80,22 @@ func (c *Impl) Exec(ctx context.Context, args []string, options ...Option) (Resu
 	command := cmd.String()
 
 	exitCode, stdout, stderr, err := ExecCommand(cmd, true)
+
+	var exitErr *exec.ExitError
+
 	switch {
-	case err != nil:
-		if len(stderr) > 0 {
-			err = fmt.Errorf("%w: %s", errors.Join(ErrExec, err), stderr)
-		} else {
-			err = errors.Join(ErrExec, err)
-		}
+	case err != nil && !errors.As(err, &exitErr):
+		err = errors.Join(ErrExec, err)
+
 	case exitCode != 0:
 		if len(stderr) > 0 {
 			err = fmt.Errorf("%w: %d: %s", ErrExitCode, exitCode, stderr)
 		} else {
 			err = fmt.Errorf("%w: %d", ErrExitCode, exitCode)
 		}
+
 	default:
+		err = nil
 	}
 
 	result := NewResult(exitCode, stdout, stderr)
