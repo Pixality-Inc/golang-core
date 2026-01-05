@@ -29,6 +29,7 @@ var (
 	ErrBothFormDataAndBody = errors.New("both form data and body provided")
 )
 
+//go:generate mockgen -destination mocks/http_client_gen.go -source http_client.go
 type Client interface {
 	Get(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
 	Post(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
