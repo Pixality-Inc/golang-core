@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pixality-inc/golang-core/clock"
 	"github.com/pixality-inc/golang-core/logger"
@@ -18,6 +19,8 @@ var (
 	ErrTokenIsInvalid          = errors.New("token is invalid")
 	ErrExtractClaims           = errors.New("extract claims failed")
 )
+
+const defaultTokenExpiration = time.Hour
 
 type Claims = jwt.MapClaims
 
@@ -61,27 +64,42 @@ func (j *Impl) Decode(ctx context.Context, signedString string) (Token, error) {
 		return nil, ErrExtractClaims
 	}
 
-	token := newSignedToken(clocks.Now(), claims, signedString)
+	iat, err := claims.GetIssuedAt()
+	if err != nil {
+		iat = jwt.NewNumericDate(clocks.Now())
+	}
+
+	eat, err := claims.GetExpirationTime()
+	if err != nil {
+		eat = jwt.NewNumericDate(iat.Add(defaultTokenExpiration))
+	}
+
+	token := newSignedToken(iat.Time, claims, signedString)
+
+	token.SetExpiresAt(eat.Time)
 
 	return token, nil
 }
 
-func (j *Impl) Encode(ctx context.Context, token Token) (SignedToken, error) {
-	clocks := clock.GetClock(ctx)
-
+func (j *Impl) Encode(_ context.Context, token Token) (SignedToken, error) {
 	claims := token.Claims()
 
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	if _, ok := claims["iat"]; !ok {
+		claims["iat"] = token.IssuedAt().Unix()
+	}
 
-	jwtToken.Header["iat"] = token.IssuedAt().Unix()
-	jwtToken.Header["exp"] = token.ExpiresAt().Unix()
+	if _, ok := claims["exp"]; !ok {
+		claims["exp"] = token.ExpiresAt().Unix()
+	}
+
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	signedString, err := jwtToken.SignedString([]byte(j.secret))
 	if err != nil {
 		return nil, errors.Join(ErrSign, err)
 	}
 
-	signedToken := newSignedToken(clocks.Now(), claims, signedString)
+	signedToken := newSignedToken(token.IssuedAt(), claims, signedString)
 
 	return signedToken, nil
 }

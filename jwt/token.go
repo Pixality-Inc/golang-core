@@ -33,7 +33,7 @@ func NewToken(issuedAt time.Time, claims Claims) *TokenImpl {
 		claims:    claims,
 		signed:    "",
 		issuedAt:  issuedAt,
-		expiresAt: issuedAt.Add(time.Hour),
+		expiresAt: issuedAt.Add(defaultTokenExpiration),
 	}
 }
 
