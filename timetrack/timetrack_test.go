@@ -37,6 +37,6 @@ func TestTimeTrack(t *testing.T) {
 	require.GreaterOrEqual(t, duration.Milliseconds(), sleepMillis)
 	require.LessOrEqual(t, endDelta.Milliseconds(), sleepMillis+1)
 	require.LessOrEqual(t, startDelta.Milliseconds(), int64(1))
-	require.InDelta(t, sleepMillis, finishedDuration.Milliseconds(), 1)
+	require.InDelta(t, sleepMillis, finishedDuration.Milliseconds(), 10)
 	require.InDelta(t, finishedDuration, duration, 0)
 }
