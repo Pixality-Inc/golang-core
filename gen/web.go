@@ -363,7 +363,7 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 `, paramNameStr))...)
 
 								routerGen = append(routerGen, []byte(fmt.Sprintf(`    if !ok {
-      http.HandleError(ctx, fmt.Errorf("%%w: no required parameter '%s' found: %%w", http.ErrBadRequest, err))
+      http.HandleError(ctx, fmt.Errorf("%%w: no required parameter '%s' found", http.ErrBadRequest))
 
       return
     }
@@ -387,7 +387,7 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 
 						if param.Required {
 							routerGen = append(routerGen, []byte(fmt.Sprintf(`    if param == "" {
-      http.HandleError(ctx, fmt.Errorf("%%w: no required parameter '%s' found: %%w", http.ErrBadRequest, err))
+      http.HandleError(ctx, fmt.Errorf("%%w: no required parameter '%s' found", http.ErrBadRequest))
 
       return
     }
