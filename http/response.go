@@ -12,7 +12,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var ErrNoResponseRenderer = errors.New("no response renderer")
+var (
+	ErrNoResponseRenderer            = errors.New("no response renderer")
+	ErrNoHttpResponseModelAndOptions = errors.New("no http response model and options")
+	ErrUnknownHttpResponseOptions    = errors.New("unknown http response options")
+)
 
 type dataFormatType int
 
@@ -122,6 +126,28 @@ func Forbidden(ctx *fasthttp.RequestCtx, errs ...error) {
 			rr.Forbidden(ctx, nil)
 		}
 	})
+}
+
+func HandleHttp[T proto.Message](ctx *fasthttp.RequestCtx, response HttpResponse[T]) {
+	model := response.Model()
+	options := response.Options()
+
+	switch {
+	case model == nil && options == nil:
+		InternalServerError(ctx, ErrNoHttpResponseModelAndOptions)
+
+	case model != nil:
+		Ok(ctx, *model)
+
+	case options != nil:
+		if options.Redirect != nil {
+			ctx.Redirect(options.Redirect.Url, options.Redirect.Status)
+
+			return
+		}
+
+		InternalServerError(ctx, ErrUnknownHttpResponseOptions)
+	}
 }
 
 func renderResponse(ctx *fasthttp.RequestCtx, statusCode int, response proto.Message) error {

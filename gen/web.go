@@ -31,6 +31,7 @@ type controllerMethod struct {
 	ResponseModel       string
 	OperationType       ApiRouteOperation
 	Operation           *ApiRoute
+	IsHttp              bool
 }
 
 func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums ApiEnums, apiModels ApiModels) error {
@@ -95,6 +96,7 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				ResponseModel:       responseModel,
 				OperationType:       operationType,
 				Operation:           &operation,
+				IsHttp:              operationEntry.Route.IsHttp,
 			})
 		}
 	}
@@ -116,6 +118,14 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 
 		if hasFile {
 			controllerImports = append(controllerImports, []string{"", "github.com/pixality-inc/golang-core/http"})
+		}
+
+		for _, method := range controllerMethods {
+			if method.IsHttp && !hasFile {
+				controllerImports = append(controllerImports, []string{"", "github.com/pixality-inc/golang-core/http"})
+
+				break
+			}
 		}
 
 		controllerImports = append(controllerImports, apiSchema.Api.ControllerImports...)
@@ -211,11 +221,17 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				methodParams = append(methodParams, "params "+method.ParametersModelName)
 			}
 
+			responseModel := method.ResponseModel
+
+			if method.IsHttp {
+				responseModel = "http.HttpResponse[" + responseModel + "]"
+			}
+
 			controllerGen = append(controllerGen, []byte(fmt.Sprintf(
 				"  %s(%s) (%s, error)",
 				method.Name,
 				strings.Join(methodParams, ", "),
-				method.ResponseModel,
+				responseModel,
 			))...)
 
 			controllerGen = append(controllerGen, '\n')
@@ -560,9 +576,15 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 
     return
   }
-
-  http.Ok(ctx, response)
 `)...)
+
+			if method.IsHttp {
+				routerGen = append(routerGen, []byte(fmt.Sprintf(`	http.HandleHttp[%s](ctx, response)`, method.ResponseModel))...)
+			} else {
+				routerGen = append(routerGen, []byte(`	http.Ok(ctx, response)`)...)
+			}
+
+			routerGen = append(routerGen, '\n')
 
 			routerGen = append(routerGen, []byte("}\n")...)
 			routerGen = append(routerGen, '\n')
