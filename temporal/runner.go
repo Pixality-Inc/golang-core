@@ -35,7 +35,7 @@ func WaitForFutures(ctx workflow.Context, timeout time.Duration, awaitables ...A
 	})
 
 	if !ok {
-		var names []string
+		var names []string // nolint:prealloc
 
 		for _, awaitable := range awaitables {
 			names = append(names, awaitable.Name())

@@ -209,7 +209,7 @@ func BuildBulkInsertQuery[T any](
 	}
 
 	for _, row := range rows {
-		var values []any
+		var values []any // nolint:prealloc
 
 		for _, column := range columns {
 			values = append(values, column.Getter(row))
