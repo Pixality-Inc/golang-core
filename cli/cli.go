@@ -124,7 +124,7 @@ func (c *Impl) buildCommand(ctx context.Context, request *Request, args []string
 	}
 
 	if len(request.envs) > 0 {
-		envs := make([]string, 0) // nolint:prealloc
+		envs := make([]string, 0, len(request.envs))
 
 		for k, v := range request.envs {
 			envs = append(envs, fmt.Sprintf("%s=%s", k, v))

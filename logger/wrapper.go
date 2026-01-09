@@ -31,7 +31,8 @@ func (l *Wrapper) Error(msg string, keyvals ...any) {
 }
 
 func (l *Wrapper) withSpaces(msg string, keyvals []any) []any {
-	result := []any{msg} // nolint:prealloc
+	result := make([]any, 0, 1+2*len(keyvals))
+	result = append(result, msg)
 
 	for _, v := range keyvals {
 		result = append(result, " ")

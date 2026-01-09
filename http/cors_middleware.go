@@ -50,15 +50,15 @@ func (m *CorsMiddleware) handle(ctx *fasthttp.RequestCtx, next fasthttp.RequestH
 }
 
 func (m *CorsMiddleware) addHeaders(ctx *fasthttp.RequestCtx) {
-	headers := []string{ // nolint:prealloc
+	headers := make([]string, 0, 6+len(m.extraHeaders))
+	headers = append(headers,
 		"Authorization",
 		"Content-Type",
 		"Accept",
 		"Content-Encoding",
 		"Upgrade",
 		"User-Agent",
-	}
-
+	)
 	headers = append(headers, m.extraHeaders...)
 
 	headersStr := strings.Join(headers, ",")
