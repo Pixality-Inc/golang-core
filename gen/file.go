@@ -11,8 +11,7 @@ func generateFile(packageName string, importsToGen [][]string) []byte {
 	genContent = append(genContent, []byte("// "+disclaimer+"\n\n")...)
 	genContent = append(genContent, []byte("package "+packageName+"\n\n")...)
 
-	var imports [][]string // nolint:prealloc
-
+	imports := make([][]string, 0, len(importsToGen))
 	imports = append(imports, importsToGen...)
 
 	if len(imports) > 0 {
