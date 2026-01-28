@@ -59,6 +59,8 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 
 			if len(operation.Parameters) > 0 ||
 				operation.RequestModel != "" ||
+				operation.RawBody ||
+				operation.RawHeaders ||
 				len(operation.RequestFiles) > 0 ||
 				len(operation.Security) > 0 {
 				parametersModelName = operation.Id + "Request"
@@ -159,6 +161,14 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				controllerGen = append(controllerGen, []byte(fmt.Sprintf("  Request *%s\n", method.Operation.RequestModel))...)
 			}
 
+			if method.Operation.RawBody {
+				controllerGen = append(controllerGen, []byte("  RawBody []byte\n")...)
+			}
+
+			if method.Operation.RawHeaders {
+				controllerGen = append(controllerGen, []byte("  RawHeaders map[string]string\n")...)
+			}
+
 			if len(method.Operation.RequestFiles) > 0 {
 				for _, fileEntry := range method.Operation.RequestFiles {
 					variableName := stringy.New(fileEntry.Name).CamelCase().UcFirst()
@@ -224,7 +234,11 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 			responseModel := method.ResponseModel
 
 			if method.IsHttp {
-				responseModel = "http.HttpResponse[" + responseModel + "]"
+				if responseModel == "" {
+					responseModel = "http.HttpResponse[proto.Message]"
+				} else {
+					responseModel = "http.HttpResponse[" + responseModel + "]"
+				}
 			}
 
 			controllerGen = append(controllerGen, []byte(fmt.Sprintf(
@@ -529,6 +543,26 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 `, method.Operation.RequestModel))...)
 				}
 
+				if method.Operation.RawBody {
+					routerGen = append(routerGen, '\n')
+
+					routerGen = append(routerGen, []byte(`
+    params.RawBody = ctx.Request.Body()
+`)...)
+				}
+
+				if method.Operation.RawHeaders {
+					routerGen = append(routerGen, '\n')
+
+					routerGen = append(routerGen, []byte(`
+    params.RawHeaders = make(map[string]string)
+
+		for key, value := range ctx.Request.Header.All() {
+			params.RawHeaders[string(key)] = string(value)
+		}
+`)...)
+				}
+
 				if len(method.Operation.RequestFiles) > 0 {
 					for _, fileEntry := range method.Operation.RequestFiles {
 						variableName := stringy.New(fileEntry.Name).CamelCase().UcFirst()
@@ -579,7 +613,11 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 `)...)
 
 			if method.IsHttp {
-				routerGen = append(routerGen, []byte(fmt.Sprintf(`	http.HandleHttp[%s](ctx, response)`, method.ResponseModel))...)
+				if method.ResponseModel == "" {
+					routerGen = append(routerGen, []byte(`	http.HandleHttp[proto.Message](ctx, response)`)...)
+				} else {
+					routerGen = append(routerGen, []byte(fmt.Sprintf(`	http.HandleHttp[%s](ctx, response)`, method.ResponseModel))...)
+				}
 			} else {
 				routerGen = append(routerGen, []byte(`	http.Ok(ctx, response)`)...)
 			}

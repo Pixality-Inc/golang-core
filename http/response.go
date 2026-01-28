@@ -15,7 +15,6 @@ import (
 var (
 	ErrNoResponseRenderer            = errors.New("no response renderer")
 	ErrNoHttpResponseModelAndOptions = errors.New("no http response model and options")
-	ErrUnknownHttpResponseOptions    = errors.New("unknown http response options")
 )
 
 type dataFormatType int
@@ -132,21 +131,18 @@ func HandleHttp[T proto.Message](ctx *fasthttp.RequestCtx, response HttpResponse
 	model := response.Model()
 	options := response.Options()
 
-	switch {
-	case model == nil && options == nil:
+	if model == nil && len(options) == 0 {
 		InternalServerError(ctx, ErrNoHttpResponseModelAndOptions)
 
-	case model != nil:
+		return
+	}
+
+	if model != nil {
 		Ok(ctx, *model)
+	}
 
-	case options != nil:
-		if options.Redirect != nil {
-			ctx.Redirect(options.Redirect.Url, options.Redirect.Status)
-
-			return
-		}
-
-		InternalServerError(ctx, ErrUnknownHttpResponseOptions)
+	for _, option := range options {
+		option(ctx)
 	}
 }
 

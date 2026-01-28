@@ -184,6 +184,8 @@ type ApiRoute struct {
 	RequestFiles   []ApiRouteRequestFile        `json:"requestFiles"   yaml:"requestFiles"`
 	RequestModel   string                       `json:"requestModel"   yaml:"requestModel"`
 	ResponseModels []string                     `json:"responseModels" yaml:"responseModels"`
+	RawBody        bool                         `json:"rawBody"        yaml:"rawBody"`
+	RawHeaders     bool                         `json:"rawHeaders"     yaml:"rawHeaders"`
 }
 
 func (ar *ApiRoute) GetParameters() []ApiRouteParameterEntry {
@@ -794,6 +796,12 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 							},
 						},
 					}
+				}
+			} else if operation.RawBody {
+				pathOperation.RequestBody = &openapi3.RequestBodyRef{
+					Value: &openapi3.RequestBody{
+						Description: "Raw Body",
+					},
 				}
 			}
 
