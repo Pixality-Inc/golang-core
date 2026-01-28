@@ -7,6 +7,7 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 )
 
+//go:generate mockgen -destination mocks/activity_gen.go -source activity.go
 type Activity interface {
 	Name() ActivityName
 	Queue() QueueName

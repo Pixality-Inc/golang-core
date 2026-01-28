@@ -4,6 +4,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+//go:generate mockgen -destination mocks/future_gen.go -source future.go
 type Awaitable interface {
 	Name() string
 	Future() workflow.Future

@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+//go:generate mockgen -destination mocks/worker_gen.go -source worker.go
 type Worker interface {
 	RegisterWorkflow(wf Workflow, runner WorkflowRunner) error
 
