@@ -1,62 +1,74 @@
 package http
 
 import (
+	"github.com/valyala/fasthttp"
 	"google.golang.org/protobuf/proto"
 )
 
-type RedirectOption struct {
-	Url    string
-	Status int
-}
+type HttpResponseOption = func(ctx *fasthttp.RequestCtx)
 
-func NewRedirectOption(url string, status int) *RedirectOption {
-	return &RedirectOption{
-		Url:    url,
-		Status: status,
+func WithRedirect(url string, status int) HttpResponseOption {
+	return func(ctx *fasthttp.RequestCtx) {
+		ctx.Redirect(url, status)
 	}
 }
 
-type HttpResponseOptions struct {
-	Redirect *RedirectOption
-}
-
-func NewHttpResponseOptions() *HttpResponseOptions {
-	return &HttpResponseOptions{
-		Redirect: nil,
+func WithHeader(key string, value string) HttpResponseOption {
+	return func(ctx *fasthttp.RequestCtx) {
+		ctx.Response.Header.Set(key, value)
 	}
 }
 
-func (o *HttpResponseOptions) WithRedirect(redirect *RedirectOption) *HttpResponseOptions {
-	o.Redirect = redirect
+func WithHeaders(headers map[string]string) HttpResponseOption {
+	return func(ctx *fasthttp.RequestCtx) {
+		for key, value := range headers {
+			ctx.Response.Header.Set(key, value)
+		}
+	}
+}
 
-	return o
+func WithStatusCode(statusCode int) HttpResponseOption {
+	return func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(statusCode)
+	}
+}
+
+func WithBody(body []byte) HttpResponseOption {
+	return func(ctx *fasthttp.RequestCtx) {
+		ctx.Response.SetBody(body)
+	}
 }
 
 type HttpResponse[T proto.Message] interface {
 	Model() *T
-	Options() *HttpResponseOptions
+	Options() []HttpResponseOption
 }
 
 type HttpResponseImpl[T proto.Message] struct {
 	model   *T
-	options *HttpResponseOptions
+	options []HttpResponseOption
 }
 
 func (r *HttpResponseImpl[T]) Model() *T {
 	return r.model
 }
 
-func (r *HttpResponseImpl[T]) Options() *HttpResponseOptions {
+func (r *HttpResponseImpl[T]) Options() []HttpResponseOption {
 	return r.options
 }
 
-func NewHttpResponseWithModel[T proto.Message](model *T) HttpResponse[T] {
+func NewHttpResponseWithModel[T proto.Message](model *T, options ...HttpResponseOption) HttpResponse[T] {
+	if options == nil {
+		options = make([]HttpResponseOption, 0)
+	}
+
 	return &HttpResponseImpl[T]{
-		model: model,
+		model:   model,
+		options: options,
 	}
 }
 
-func NewHttpResponseWithOptions[T proto.Message](options *HttpResponseOptions) HttpResponse[T] {
+func NewHttpResponseWithOptions[T proto.Message](options ...HttpResponseOption) HttpResponse[T] {
 	return &HttpResponseImpl[T]{
 		options: options,
 	}
