@@ -82,7 +82,6 @@ func (r *ResponseRendererImpl) Error(ctx *fasthttp.RequestCtx, err error) {
 	}
 
 	errorMessage := r.protoRenderer.Error(statusCode, err)
-
 	if err := renderResponse(ctx, statusCode, errorMessage); err != nil {
 		r.log.GetLogger(ctx).WithError(err).Error("output error")
 	}
