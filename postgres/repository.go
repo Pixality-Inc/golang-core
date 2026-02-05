@@ -254,7 +254,7 @@ func FetchRow[R any, M any](
 
 	if len(rows) > 0 {
 		return convertedRows[0], nil
-	} else {
-		return defaultValue, ErrNoRows
 	}
+
+	return defaultValue, ErrNoRows
 }
