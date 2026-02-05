@@ -507,6 +507,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	// Names
 
 	modelName := modelRequest.modelName.camelCapitalized
+	modelsName := modelRequest.daoName.camelCapitalized
 
 	daoName := modelRequest.daoName.camelCapitalized + "Dao"
 	daoImplName := daoName + "Impl"
@@ -515,9 +516,9 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	implName := modelName + "Impl"
 	newName := "New" + modelName
 	rowName := modelRequest.modelName.camel + "Row"
-	tableColumnsName := modelName + "TableColumns"
-	tableNameName := modelName + "TableName"
-	tableName := modelName + "Table"
+	tableColumnsName := modelsName + "TableColumns"
+	tableNameName := modelsName + "TableName"
+	tableName := modelsName + "Table"
 	convertName := "convert" + modelName + "RowToModel"
 
 	// Model
