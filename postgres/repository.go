@@ -7,6 +7,7 @@ import (
 
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/timetrack"
+	"github.com/pixality-inc/golang-core/util"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/pgxscan"
@@ -219,4 +220,41 @@ func BuildBulkInsertQuery[T any](
 	}
 
 	return query, nil
+}
+
+func FetchRows[R any, M any](
+	ctx context.Context,
+	queryRunner QueryRunner,
+	query squirrel.SelectBuilder,
+	convert func(R) M,
+) ([]M, error) {
+	var rows []R
+
+	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+		return nil, err
+	}
+
+	return util.MapSimple(rows, convert), nil
+}
+
+func FetchRow[R any, M any](
+	ctx context.Context,
+	queryRunner QueryRunner,
+	query squirrel.SelectBuilder,
+	convert func(R) M,
+	defaultValue M,
+) (M, error) {
+	var rows []R
+
+	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+		return defaultValue, err
+	}
+
+	convertedRows := util.MapSimple(rows, convert)
+
+	if len(rows) > 0 {
+		return convertedRows[0], nil
+	} else {
+		return defaultValue, ErrNoRows
+	}
 }
