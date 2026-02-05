@@ -716,6 +716,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 		daoFormat := `type %sImpl struct {
 	tableName       string
 	queryBuilder    *squirrel.StatementBuilderType
+	baseQuery       func(columns ...string) squirrel.SelectBuilder
 	baseSelectQuery func() squirrel.SelectBuilder
 	baseInsertQuery func() squirrel.InsertBuilder
 	baseUpdateQuery func() squirrel.UpdateBuilder
@@ -752,6 +753,9 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	return &%sImpl{
 		tableName: tableName,
 		queryBuilder: queryBuilder,
+		baseQuery: func(columns ...string) squirrel.SelectBuilder {
+			return queryBuilder.Select(columns...).From(tableName)
+		},
 		baseSelectQuery: func() squirrel.SelectBuilder {
 			return queryBuilder.Select(%s...).From(tableName)
 		},
