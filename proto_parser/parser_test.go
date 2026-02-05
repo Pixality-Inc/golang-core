@@ -93,8 +93,11 @@ message Example {
 	reserved 6 to 10;
 }`
 
+//nolint:maintidx
 func TestParser(t *testing.T) {
 	t.Parallel()
+
+	pathSeparator := "::"
 
 	testCases := []struct {
 		name         string
@@ -136,7 +139,7 @@ func TestParser(t *testing.T) {
 					require.Equal(t, 0, enum.FileId())
 					require.Equal(t, "protocol", enum.Package())
 					require.Equal(t, "Color", enum.Name())
-					require.Equal(t, "Color", enum.FullName())
+					require.Equal(t, "Color", GetFullName(enum, pathSeparator))
 					require.Empty(t, enum.Path())
 
 					entries := enum.Entries()
@@ -159,7 +162,7 @@ func TestParser(t *testing.T) {
 					require.Equal(t, 0, model.FileId())
 					require.Equal(t, "protocol", model.Package())
 					require.Equal(t, "Example", model.Name())
-					require.Equal(t, "Example", model.FullName())
+					require.Equal(t, "Example", GetFullName(model, pathSeparator))
 					require.Empty(t, model.Path())
 
 					fields := model.Fields()
@@ -255,13 +258,13 @@ func TestParser(t *testing.T) {
 					}
 				}
 
-				if model, ok := results.Models["Example__Child"]; !ok {
+				if model, ok := results.Models["Example"+pathSeparator+"Child"]; !ok {
 					require.True(t, ok)
 				} else {
 					require.Equal(t, 0, model.FileId())
 					require.Equal(t, "protocol", model.Package())
 					require.Equal(t, "Child", model.Name())
-					require.Equal(t, "Example__Child", model.FullName())
+					require.Equal(t, "Example"+pathSeparator+"Child", GetFullName(model, pathSeparator))
 
 					path := model.Path()
 
@@ -309,7 +312,7 @@ func TestParser(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			parser := New()
+			parser := New(pathSeparator)
 			result, err := parser.Parse(t.Context(), testCase.inputs)
 
 			if testCase.wantErr != nil {

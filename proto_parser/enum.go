@@ -1,13 +1,10 @@
 package proto_parser
 
-import "strings"
-
 type Enum interface {
 	FileId() int
 	Package() string
 	Path() []string
 	Name() string
-	FullName() string
 	Entries() []EnumEntry
 }
 
@@ -49,14 +46,6 @@ func (e *EnumImpl) Path() []string {
 
 func (e *EnumImpl) Name() string {
 	return e.name
-}
-
-func (e *EnumImpl) FullName() string {
-	if len(e.path) > 0 {
-		return strings.Join(e.path, "__") + "__" + e.Name()
-	} else {
-		return e.Name()
-	}
 }
 
 func (e *EnumImpl) Entries() []EnumEntry {

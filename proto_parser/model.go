@@ -1,13 +1,10 @@
 package proto_parser
 
-import "strings"
-
 type Model interface {
 	FileId() int
 	Package() string
 	Path() []string
 	Name() string
-	FullName() string
 	Fields() []Field
 }
 
@@ -49,14 +46,6 @@ func (m *ModelImpl) Path() []string {
 
 func (m *ModelImpl) Name() string {
 	return m.name
-}
-
-func (m *ModelImpl) FullName() string {
-	if len(m.path) > 0 {
-		return strings.Join(m.path, "__") + "__" + m.Name()
-	} else {
-		return m.Name()
-	}
 }
 
 func (m *ModelImpl) Fields() []Field {

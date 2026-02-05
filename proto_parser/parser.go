@@ -15,12 +15,14 @@ type Parser interface {
 }
 
 type ParserImpl struct {
-	log logger.Loggable
+	log           logger.Loggable
+	pathSeparator string
 }
 
-func New() Parser {
+func New(pathSeparator string) Parser {
 	return &ParserImpl{
-		log: logger.NewLoggableImplWithService("proto_parser"),
+		log:           logger.NewLoggableImplWithService("proto_parser"),
+		pathSeparator: pathSeparator,
 	}
 }
 
@@ -203,7 +205,9 @@ func (p *ParserImpl) processMessage(
 		fields,
 	)
 
-	state.models[model.FullName()] = model
+	fullName := GetFullName(model, p.pathSeparator)
+
+	state.models[fullName] = model
 
 	return nil
 }
@@ -244,7 +248,9 @@ func (p *ParserImpl) processEnum(
 		entries,
 	)
 
-	state.enums[enumModel.FullName()] = enumModel
+	fullName := GetFullName(enumModel, p.pathSeparator)
+
+	state.enums[fullName] = enumModel
 
 	return nil
 }
