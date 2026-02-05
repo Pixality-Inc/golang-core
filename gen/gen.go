@@ -504,23 +504,6 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 		return nil, err
 	}
 
-	// Columns
-
-	var columnsGen []byte
-
-	{
-		columnsGen = append(columnsGen, []byte("var "+modelRequest.daoName.columnsSuffix+" = []string{\n")...)
-
-		for _, field := range model.fields {
-			columnsGen = append(columnsGen, '\t')
-			columnsGen = append(columnsGen, []byte(field.sqlField.name)...)
-			columnsGen = append(columnsGen, ',')
-			columnsGen = append(columnsGen, '\n')
-		}
-
-		columnsGen = append(columnsGen, []byte("}")...)
-	}
-
 	// Names
 
 	modelName := modelRequest.modelName.camelCapitalized
@@ -532,6 +515,9 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	implName := modelName + "Impl"
 	newName := "New" + modelName
 	rowName := modelRequest.modelName.camel + "Row"
+	tableColumnsName := modelName + "TableColumns"
+	tableNameName := modelName + "TableName"
+	tableName := modelName + "Table"
 	convertName := "convert" + modelName + "RowToModel"
 
 	// Model
@@ -666,10 +652,71 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	var daoGen []byte
 
 	{
+		// TableColumns
+		buf := make([]byte, 0)
+
+		buf = append(buf, []byte("type "+tableColumnsName+" struct {\n")...)
+
+		for _, field := range model.fields {
+			buf = append(buf, []byte("\t"+field.modelField.name+" string\n")...)
+		}
+
+		buf = append(buf, '}', '\n', '\n')
+
+		daoGen = append(daoGen, buf...)
+	}
+
+	{
+		quotedTableName := strconv.Quote(modelRequest.daoName.snake)
+
+		// TableName
+		buf := make([]byte, 0)
+
+		buf = append(buf, []byte("var "+tableNameName+"  = "+quotedTableName+" \n")...)
+		buf = append(buf, '\n', '\n')
+
+		daoGen = append(daoGen, buf...)
+	}
+
+	{
+		// Table
+		buf := make([]byte, 0)
+
+		buf = append(buf, []byte("var "+tableName+"  = "+tableColumnsName+" {\n")...)
+
+		for _, field := range model.fields {
+			buf = append(buf, []byte("\t"+field.modelField.name+": "+field.sqlField.name+",\n")...)
+		}
+
+		buf = append(buf, '}', '\n', '\n')
+
+		daoGen = append(daoGen, buf...)
+	}
+
+	// Columns
+
+	{
+		buf := make([]byte, 0)
+
+		buf = append(buf, []byte("var "+modelRequest.daoName.columnsSuffix+" = []string{\n")...)
+
+		for _, field := range model.fields {
+			buf = append(buf, '\t')
+			buf = append(buf, []byte(tableName+"."+field.modelField.name)...)
+			buf = append(buf, ',')
+			buf = append(buf, '\n')
+		}
+
+		buf = append(buf, '}', '\n', '\n')
+
+		daoGen = append(daoGen, buf...)
+	}
+
+	{
 		daoFormat := `type %sImpl struct {
 	tableName       string
 	queryBuilder    *squirrel.StatementBuilderType
-	baseSelectQuery func() squirrel.SelectBuilder
+	baseSelectQuery func(columns ...string) squirrel.SelectBuilder
 	baseInsertQuery func() squirrel.InsertBuilder
 	baseUpdateQuery func() squirrel.UpdateBuilder
 	insertColumns   []postgres.GetterInsertColumn[%s]
@@ -686,11 +733,12 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 		var newDaoFieldsGen []byte
 
 		for _, field := range model.fields {
-			fieldFormat := `			postgres.NewGetterInsertColumn(%s, func(o %s) any { return o.Get%s() }),`
+			fieldFormat := `			postgres.NewGetterInsertColumn(%s.%s, func(o %s) any { return o.Get%s() }),`
 
 			newDaoFieldsGen = append(newDaoFieldsGen, []byte(fmt.Sprintf(
 				fieldFormat,
-				field.sqlField.name,
+				tableName,
+				field.modelField.name,
 				modelName,
 				field.modelField.name,
 			))...)
@@ -704,8 +752,12 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	return &%sImpl{
 		tableName: tableName,
 		queryBuilder: queryBuilder,
-		baseSelectQuery: func() squirrel.SelectBuilder {
-			return queryBuilder.Select(%s...).From(tableName)
+		baseSelectQuery: func(columns ...string) squirrel.SelectBuilder {
+			if len(columns) == 0 {
+				return queryBuilder.Select(%s...).From(tableName)
+			} else {
+				return queryBuilder.Select(columns...).From(tableName)
+			}
 		},
 		baseInsertQuery: func() squirrel.InsertBuilder {
 			return queryBuilder.Insert(tableName)
@@ -718,13 +770,11 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	}
 }`
 
-		quotedTableName := strconv.Quote(modelRequest.daoName.snake)
-
 		newDaoGen = append(newDaoGen, []byte(fmt.Sprintf(
 			newDaoFormat,
 			modelRequest.daoName.daoSuffix,
 			modelRequest.daoName.daoSuffix,
-			quotedTableName,
+			tableNameName,
 			modelRequest.daoName.daoSuffix,
 			modelRequest.daoName.columnsSuffix,
 			modelName,
@@ -1022,8 +1072,6 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 			resultDaoGen = append(resultDaoGen, '\n', '\n')
 		}
 
-		resultDaoGen = append(resultDaoGen, columnsGen...)
-		resultDaoGen = append(resultDaoGen, '\n', '\n')
 		resultDaoGen = append(resultDaoGen, modelGen...)
 		resultDaoGen = append(resultDaoGen, '\n', '\n')
 		resultDaoGen = append(resultDaoGen, daoGen...)
