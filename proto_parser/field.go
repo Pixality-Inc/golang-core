@@ -26,7 +26,7 @@ func NewField(
 	name string,
 	typ string,
 	options ...FieldOption,
-) *FieldImpl {
+) Field {
 	field := &FieldImpl{
 		name:           name,
 		typ:            typ,
