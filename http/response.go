@@ -257,9 +257,9 @@ func mediaTypeToFormat(mediaType string) dataFormatType {
 	case "application/x-protobuf":
 		return DataFormatXProtobuf
 	case "*/*":
-		return DataFormatProtobuf
+		return DataFormatJson
 	case "":
-		return DataFormatProtobuf
+		return DataFormatJson
 	default:
 		return DataFormatUnknown
 	}
@@ -274,6 +274,9 @@ func getAcceptFormat(ctx *fasthttp.RequestCtx, headerName string) (dataFormatTyp
 	})
 
 	for _, r := range ranges {
+		if r.q == 0 {
+			continue
+		}
 		if f := mediaTypeToFormat(r.mediaType); f != DataFormatUnknown {
 			return f, nil
 		}

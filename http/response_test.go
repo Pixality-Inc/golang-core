@@ -108,8 +108,8 @@ func TestMediaTypeToFormat(t *testing.T) {
 		{name: "json", mediaType: "application/json", want: DataFormatJson},
 		{name: "protobuf", mediaType: "application/protobuf", want: DataFormatProtobuf},
 		{name: "x-protobuf", mediaType: "application/x-protobuf", want: DataFormatXProtobuf},
-		{name: "wildcard", mediaType: "*/*", want: DataFormatProtobuf},
-		{name: "empty", mediaType: "", want: DataFormatProtobuf},
+		{name: "wildcard", mediaType: "*/*", want: DataFormatJson},
+		{name: "empty", mediaType: "", want: DataFormatJson},
 		{name: "unknown xml", mediaType: "application/xml", want: DataFormatUnknown},
 		{name: "unknown text", mediaType: "text/html", want: DataFormatUnknown},
 	}
@@ -135,10 +135,10 @@ func TestGetAcceptFormat(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "empty accept defaults to protobuf",
+			name:       "empty accept defaults to json",
 			headerName: "Accept",
 			headerVal:  "",
-			wantFmt:    DataFormatProtobuf,
+			wantFmt:    DataFormatJson,
 		},
 		{
 			name:       "exact json",
@@ -162,19 +162,19 @@ func TestGetAcceptFormat(t *testing.T) {
 			name:       "wildcard",
 			headerName: "Accept",
 			headerVal:  "*/*",
-			wantFmt:    DataFormatProtobuf,
+			wantFmt:    DataFormatJson,
 		},
 		{
 			name:       "stripe header - wildcard low q then xml",
 			headerName: "Accept",
 			headerVal:  "*/*; q=0.5, application/xml",
-			wantFmt:    DataFormatProtobuf,
+			wantFmt:    DataFormatJson,
 		},
 		{
 			name:       "xml first then wildcard - should fallback to wildcard",
 			headerName: "Accept",
 			headerVal:  "application/xml, */*; q=0.5",
-			wantFmt:    DataFormatProtobuf,
+			wantFmt:    DataFormatJson,
 		},
 		{
 			name:       "json preferred over wildcard by q",
@@ -187,6 +187,19 @@ func TestGetAcceptFormat(t *testing.T) {
 			headerName: "Accept",
 			headerVal:  "application/json; q=0.5, application/protobuf; q=1.0, */*; q=0.1",
 			wantFmt:    DataFormatProtobuf,
+		},
+		{
+			name:       "q=0 means not acceptable - skip json, pick protobuf",
+			headerName: "Accept",
+			headerVal:  "application/json; q=0, application/protobuf",
+			wantFmt:    DataFormatProtobuf,
+		},
+		{
+			name:       "all supported types with q=0 - error",
+			headerName: "Accept",
+			headerVal:  "application/json; q=0, application/protobuf; q=0",
+			wantFmt:    DataFormatUnknown,
+			wantErr:    true,
 		},
 		{
 			name:       "all unsupported types",
