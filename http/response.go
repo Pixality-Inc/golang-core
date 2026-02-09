@@ -2,6 +2,8 @@ package http
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pixality-inc/golang-core/logger"
@@ -198,20 +200,83 @@ func getOutputFormat(ctx *fasthttp.RequestCtx) (dataFormatType, error) {
 	return getAcceptFormat(ctx, "Accept")
 }
 
-func getAcceptFormat(ctx *fasthttp.RequestCtx, headerName string) (dataFormatType, error) {
-	acceptHeaderStr := strings.ToLower(string(ctx.Request.Header.Peek(headerName)))
+// acceptRange represents a single media-range from Accept header with its quality value
+type acceptRange struct {
+	mediaType string
+	q         float64
+}
 
-	switch acceptHeaderStr {
+// parseAcceptHeader parses Accept/Content-Type header value according to RFC 7231
+// example: "*/*; q=0.5, application/xml" -> [{*/* 0.5}, {application/xml 1.0}]
+func parseAcceptHeader(header string) []acceptRange {
+	if header == "" {
+		return []acceptRange{{mediaType: "", q: 1.0}}
+	}
+
+	parts := strings.Split(header, ",")
+	result := make([]acceptRange, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		mediaType := part
+		quality := 1.0
+
+		if mtype, params, ok := strings.Cut(part, ";"); ok {
+			mediaType = strings.TrimSpace(mtype)
+			// parse params looking for q
+			for param := range strings.SplitSeq(params, ";") {
+				param = strings.TrimSpace(param)
+				if strings.HasPrefix(param, "q=") {
+					if v, err := strconv.ParseFloat(strings.TrimSpace(param[2:]), 64); err == nil && v >= 0 && v <= 1 {
+						quality = v
+					}
+
+					break
+				}
+			}
+		}
+
+		result = append(result, acceptRange{mediaType: mediaType, q: quality})
+	}
+
+	return result
+}
+
+// mediaTypeToFormat maps a media type string to internal dataFormatType.
+// returns DataFormatUnknown for unsupported types.
+func mediaTypeToFormat(mediaType string) dataFormatType {
+	switch mediaType {
 	case "application/json":
-		return DataFormatJson, nil
+		return DataFormatJson
 	case "application/protobuf":
-		return DataFormatProtobuf, nil
+		return DataFormatProtobuf
 	case "application/x-protobuf":
-		return DataFormatXProtobuf, nil
+		return DataFormatXProtobuf
 	case "*/*":
-		return DataFormatProtobuf, nil
+		return DataFormatProtobuf
 	case "":
-		return DataFormatProtobuf, nil
+		return DataFormatProtobuf
+	default:
+		return DataFormatUnknown
+	}
+}
+
+func getAcceptFormat(ctx *fasthttp.RequestCtx, headerName string) (dataFormatType, error) {
+	raw := strings.ToLower(strings.TrimSpace(string(ctx.Request.Header.Peek(headerName))))
+
+	ranges := parseAcceptHeader(raw)
+	sort.SliceStable(ranges, func(i, j int) bool {
+		return ranges[i].q > ranges[j].q
+	})
+
+	for _, r := range ranges {
+		if f := mediaTypeToFormat(r.mediaType); f != DataFormatUnknown {
+			return f, nil
+		}
 	}
 
 	return DataFormatUnknown, errors.New(fmt.Sprintf("can't recognize data format (in header %v)", headerName))
