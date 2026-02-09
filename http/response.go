@@ -277,6 +277,7 @@ func getAcceptFormat(ctx *fasthttp.RequestCtx, headerName string) (dataFormatTyp
 		if r.q == 0 {
 			continue
 		}
+
 		if f := mediaTypeToFormat(r.mediaType); f != DataFormatUnknown {
 			return f, nil
 		}
