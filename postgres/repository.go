@@ -222,25 +222,57 @@ func BuildBulkInsertQuery[T any](
 	return query, nil
 }
 
-func FetchRows[R any, M any](
+func FetchRowsSimple[R any](
 	ctx context.Context,
 	queryRunner QueryRunner,
-	query squirrel.SelectBuilder,
-	convert func(R) M,
-) ([]M, error) {
+	query Query,
+) ([]R, error) {
 	var rows []R
 
 	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return nil, err
 	}
 
+	return rows, nil
+}
+
+func FetchRows[R any, M any](
+	ctx context.Context,
+	queryRunner QueryRunner,
+	query Query,
+	convert func(R) M,
+) ([]M, error) {
+	rows, err := FetchRowsSimple[R](ctx, queryRunner, query)
+	if err != nil {
+		return nil, err
+	}
+
 	return util.MapSimple(rows, convert), nil
+}
+
+func FetchRowSimple[R any](
+	ctx context.Context,
+	queryRunner QueryRunner,
+	query Query,
+	defaultValue R,
+) (R, error) {
+	var rows []R
+
+	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+		return defaultValue, err
+	}
+
+	if len(rows) > 0 {
+		return rows[0], nil
+	}
+
+	return defaultValue, ErrNoRows
 }
 
 func FetchRow[R any, M any](
 	ctx context.Context,
 	queryRunner QueryRunner,
-	query squirrel.SelectBuilder,
+	query Query,
 	convert func(R) M,
 	defaultValue M,
 ) (M, error) {
@@ -250,10 +282,8 @@ func FetchRow[R any, M any](
 		return defaultValue, err
 	}
 
-	convertedRows := util.MapSimple(rows, convert)
-
 	if len(rows) > 0 {
-		return convertedRows[0], nil
+		return convert(rows[0]), nil
 	}
 
 	return defaultValue, ErrNoRows
