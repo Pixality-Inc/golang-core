@@ -789,7 +789,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 
 	{
 		imports := [][]string{
-			{"", "github.com/Masterminds/squirrel"},
+			{"", "github.com/pixality-inc/squirrel"},
 			{"", "github.com/pixality-inc/golang-core/postgres"},
 		}
 
@@ -852,7 +852,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 		imports := [][]string{
 			{"", "context"},
 			{"", "fmt"},
-			{"", "github.com/Masterminds/squirrel"},
+			{"", "github.com/pixality-inc/squirrel"},
 			{"", "github.com/pixality-inc/golang-core/util"},
 			{"", "github.com/pixality-inc/golang-core/postgres"},
 		}
