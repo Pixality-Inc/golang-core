@@ -1,6 +1,6 @@
 package postgres
 
-import "github.com/Masterminds/squirrel"
+import "github.com/pixality-inc/squirrel"
 
 func TableAlias(tableName string, alias string) string {
 	return tableName + " AS " + alias

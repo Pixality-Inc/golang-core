@@ -9,9 +9,9 @@ import (
 	"github.com/pixality-inc/golang-core/timetrack"
 	"github.com/pixality-inc/golang-core/util"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/georgysavva/scany/pgxscan"
 	"github.com/jackc/pgx/v4"
+	"github.com/pixality-inc/squirrel"
 )
 
 type (
