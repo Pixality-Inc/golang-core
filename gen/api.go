@@ -32,6 +32,7 @@ var (
 	errNoSchemaFound          = errors.New("no schema found for model, try to run gen again")
 	errOnlyOneSecurityAllowed = errors.New("only 1 security is allowed for operation")
 	errUnknownRouteOperation  = errors.New("unknown route operation")
+	errUnknownFieldType       = errors.New("unknown field type")
 )
 
 type ProtoField interface {
@@ -39,6 +40,8 @@ type ProtoField interface {
 	IsOptional() bool
 	IsRepeated() bool
 	IsMap() bool
+	IsOneOf() bool
+	IsOneOfField() bool
 }
 
 type NormalProtoField struct {
@@ -67,6 +70,14 @@ func (f *NormalProtoField) IsMap() bool {
 	return false
 }
 
+func (f *NormalProtoField) IsOneOf() bool {
+	return false
+}
+
+func (f *NormalProtoField) IsOneOfField() bool {
+	return false
+}
+
 type MapProtoField struct {
 	mapField *protoParser.MapField
 }
@@ -87,9 +98,85 @@ func (f *MapProtoField) IsMap() bool {
 	return true
 }
 
+func (f *MapProtoField) IsOneOf() bool {
+	return false
+}
+
+func (f *MapProtoField) IsOneOfField() bool {
+	return false
+}
+
 func NewProtoFieldFromMapField(mapField *protoParser.MapField) ProtoField {
 	return &MapProtoField{
 		mapField: mapField,
+	}
+}
+
+type OneOfProtoField struct {
+	oneOf *protoParser.Oneof
+}
+
+func (f *OneOfProtoField) IsRequired() bool {
+	return true
+}
+
+func (f *OneOfProtoField) IsOptional() bool {
+	return false
+}
+
+func (f *OneOfProtoField) IsRepeated() bool {
+	return false
+}
+
+func (f *OneOfProtoField) IsMap() bool {
+	return false
+}
+
+func (f *OneOfProtoField) IsOneOf() bool {
+	return true
+}
+
+func (f *OneOfProtoField) IsOneOfField() bool {
+	return false
+}
+
+func NewProtoFieldFromOneOf(oneOf *protoParser.Oneof) ProtoField {
+	return &OneOfProtoField{
+		oneOf: oneOf,
+	}
+}
+
+type OneOfFieldProtoField struct {
+	oneOfField *protoParser.OneOfField
+}
+
+func (f *OneOfFieldProtoField) IsRequired() bool {
+	return true
+}
+
+func (f *OneOfFieldProtoField) IsOptional() bool {
+	return false
+}
+
+func (f *OneOfFieldProtoField) IsRepeated() bool {
+	return false
+}
+
+func (f *OneOfFieldProtoField) IsMap() bool {
+	return false
+}
+
+func (f *OneOfFieldProtoField) IsOneOf() bool {
+	return false
+}
+
+func (f *OneOfFieldProtoField) IsOneOfField() bool {
+	return true
+}
+
+func NewProtoFieldFromOneOfField(oneOfField *protoParser.OneOfField) ProtoField {
+	return &OneOfFieldProtoField{
+		oneOfField: oneOfField,
 	}
 }
 
@@ -530,7 +617,6 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 		visited[modelName] = modelName
 
 		model, ok := modelFields[protoModelName]
-
 		if !ok {
 			model = make(map[string]ProtoField)
 		}
@@ -542,26 +628,38 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 		objectProperties := make(map[string]*openapi3.SchemaRef)
 		requiredProperties := make([]string, 0)
 
-		for i := range fields.Len() {
-			fieldDesc := fields.Get(i)
-			refFieldField := refField.Field(3 + i)
-			name := string(fieldDesc.Name())
+		isOneOfField := func(fieldDesc protoreflect.FieldDescriptor) bool {
+			containingOneOf := fieldDesc.ContainingOneof()
+			if containingOneOf != nil {
+				containingOneOfFields := containingOneOf.Fields()
+				if containingOneOfFields != nil {
+					return containingOneOfFields.Len() > 1
+				}
+			}
+
+			return false
+		}
+
+		oneOfs := make(map[string]map[string]protoreflect.FieldDescriptor)
+
+		fieldToObjectProperty := func(fieldDesc protoreflect.FieldDescriptor) (*openapi3.SchemaRef, bool, error) {
 			kind := fieldDesc.Kind()
+			name := string(fieldDesc.Name())
 
 			field, ok := model[name]
 			if !ok {
-				return fmt.Errorf("%w: '%s' in model '%s' (%s)", errFieldNotFound, name, modelName, protoModelName)
+				return nil, false, fmt.Errorf("%w: '%s' in model '%s' (%s)", errFieldNotFound, name, modelName, protoModelName)
 			}
 
-			isRequired := field.IsRequired()
-			isOptional := field.IsOptional()
 			isRepeated := field.IsRepeated()
 			isMap := field.IsMap()
 
-			extras := PropertyExtras{
-				Title:       refFieldField.Tag.Get("title"),
-				Description: refFieldField.Tag.Get("description"),
-				Format:      refFieldField.Tag.Get("format"),
+			extras := PropertyExtras{}
+
+			if refFieldField, hasRefField := refField.FieldByName(name); hasRefField {
+				extras.Title = refFieldField.Tag.Get("title")
+				extras.Description = refFieldField.Tag.Get("description")
+				extras.Format = refFieldField.Tag.Get("format")
 			}
 
 			var property *openapi3.SchemaRef
@@ -587,7 +685,7 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				msgName := g.config.ApiModelsPrefix + strings.Join(modelNames, "_")
 
 				if resultName, err := addSchema(msgName); err != nil {
-					return err
+					return nil, false, err
 				} else {
 					if isMap {
 						property = mapProperty(resultName, extras)
@@ -612,25 +710,85 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				enum := fieldDesc.Enum()
 
 				enumData, ok := apiEnums[string(enum.Name())]
-
 				if !ok {
-					return fmt.Errorf("%w: %s", errUnknownEnum, enum.Name())
+					return nil, false, fmt.Errorf("%w: %s", errUnknownEnum, enum.Name())
 				}
 
 				property = enumProperty(enumData.GetValues(), extras)
 
 			default:
-				return fmt.Errorf("%w: %v", errKindNotSupported, kind)
+				return nil, false, fmt.Errorf("%w: %v", errKindNotSupported, kind)
 			}
+
+			isRequired := field.IsRequired()
+			isOptional := field.IsOptional()
+
+			resultIsRequired := isRepeated || isRequired || !isOptional
 
 			if isRepeated {
-				objectProperties[name] = arrayProperty(property, extras)
-			} else {
-				objectProperties[name] = property
+				property = arrayProperty(property, extras)
 			}
 
-			if isRepeated || isRequired || !isOptional {
-				requiredProperties = append(requiredProperties, name)
+			return property, resultIsRequired, nil
+		}
+
+		for i := range fields.Len() {
+			fieldDesc := fields.Get(i)
+
+			if isOneOfField(fieldDesc) {
+				oneOfName := string(fieldDesc.ContainingOneof().Name())
+
+				if _, ok := oneOfs[oneOfName]; !ok {
+					oneOfs[oneOfName] = make(map[string]protoreflect.FieldDescriptor)
+				}
+
+				oneOfs[oneOfName][string(fieldDesc.Name())] = fieldDesc
+
+				continue
+			}
+
+			property, isRequired, err := fieldToObjectProperty(fieldDesc)
+			if err != nil {
+				return err
+			}
+
+			objectProperties[string(fieldDesc.Name())] = property
+
+			if isRequired {
+				requiredProperties = append(requiredProperties, string(fieldDesc.Name()))
+			}
+		}
+
+		for oneOfName, oneOfFields := range oneOfs {
+			schemaFields := make(map[string]*openapi3.SchemaRef, len(oneOfFields))
+
+			for _, oneOfField := range oneOfFields {
+				property, _, err := fieldToObjectProperty(oneOfField)
+				if err != nil {
+					return err
+				}
+
+				schemaFields[string(oneOfField.Name())] = property
+			}
+
+			schemaRefs := make([]*openapi3.SchemaRef, 0, len(schemaFields))
+
+			for fieldName, property := range schemaFields {
+				schemaRefs = append(schemaRefs, &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						Type:        &openapi3.Types{openapi3.TypeObject},
+						Description: fieldName,
+						Properties: map[string]*openapi3.SchemaRef{
+							fieldName: property,
+						},
+					},
+				})
+			}
+
+			objectProperties[oneOfName] = &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					OneOf: schemaRefs,
+				},
 			}
 		}
 
@@ -1044,6 +1202,27 @@ func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema 
 						modelsFields[modelName][el.Name] = NewProtoFieldFromNormalField(el)
 					case *protoParser.MapField:
 						modelsFields[modelName][el.Name] = NewProtoFieldFromMapField(el)
+					case *protoParser.Oneof:
+						modelsFields[modelName][el.Name] = NewProtoFieldFromOneOf(el)
+
+						for _, oneOfField := range el.Elements {
+							switch field := oneOfField.(type) {
+							case *protoParser.OneOfField:
+								modelsFields[modelName][field.Name] = NewProtoFieldFromOneOfField(field)
+							default:
+								panic(fmt.Errorf("%w: %T in oneof %q of message %q", errUnknownFieldType, field, el.Name, modelName))
+							}
+						}
+					case *protoParser.Comment:
+						// skip
+					case *protoParser.Option:
+						// skip
+					case *protoParser.Reserved:
+						// skip
+					case *protoParser.Message:
+						// skip
+					default:
+						panic(fmt.Errorf("%w: %T in message %q", errUnknownFieldType, element, modelName))
 					}
 				}
 			}),
