@@ -1,4 +1,4 @@
-package cached_value
+package preloader
 
 import (
 	"context"
