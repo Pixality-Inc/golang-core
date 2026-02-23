@@ -409,9 +409,13 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 	swaggerFilename := path.Join(g.config.DocsDir, "swagger.yaml")
 	genFilename := path.Join(g.config.ApiDir, "gen.go")
 
-	modelFields, err := g.generateApiGen(ctx, genFilename, apiSchema)
+	modelFields, parsedEnums, err := g.generateApiGen(ctx, genFilename, apiSchema)
 	if err != nil {
 		return err
+	}
+
+	for k, v := range parsedEnums {
+		apiEnums[k] = v
 	}
 
 	// Base schema
@@ -1065,12 +1069,12 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 	return nil
 }
 
-func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema *ApiSchema) (map[string]map[string]ProtoField, error) {
+func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema *ApiSchema) (map[string]map[string]ProtoField, ApiEnums, error) {
 	log := g.log.GetLogger(ctx)
 
 	protoFileReader, err := os.Open(g.config.ProtoFilename)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	defer func() {
@@ -1083,10 +1087,12 @@ func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema 
 
 	definition, err := parser.Parse()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	genContent := generateFile(g.config.ApiPackageName, apiSchema.Api.Imports)
+
+	parsedEnums := make(ApiEnums)
 
 	{
 		genContent = append(genContent, '\n')
@@ -1143,6 +1149,7 @@ func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema 
 				}
 
 				addEnum(enum.Name, enumValues)
+				parsedEnums[enum.Name] = NewApiEnum(enum.Name, enumValues)
 			}),
 		)
 
@@ -1221,6 +1228,8 @@ func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema 
 						// skip
 					case *protoParser.Message:
 						// skip
+					case *protoParser.Enum:
+						// skip
 					default:
 						panic(fmt.Errorf("%w: %T in message %q", errUnknownFieldType, element, modelName))
 					}
@@ -1234,8 +1243,8 @@ func (g *Gen) generateApiGen(ctx context.Context, genFilename string, apiSchema 
 
 	//nolint:gosec // G306: generated file permissions are intentionally permissive
 	if err := os.WriteFile(genFilename, genContent, os.ModePerm); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return modelsFields, nil
+	return modelsFields, parsedEnums, nil
 }
