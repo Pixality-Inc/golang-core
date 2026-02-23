@@ -778,6 +778,7 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 					Value: &openapi3.Schema{
 						Type:        &openapi3.Types{openapi3.TypeObject},
 						Description: fieldName,
+						Title:       fieldName,
 						Properties: map[string]*openapi3.SchemaRef{
 							fieldName: property,
 						},
