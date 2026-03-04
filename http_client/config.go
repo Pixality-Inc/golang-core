@@ -41,6 +41,7 @@ type Config interface {
 	MaxResponseBodySize() int
 	MaxConnDuration() time.Duration
 	StreamResponseBody() bool
+	FollowRedirects() bool
 	TLSMinVersion() uint16
 	TLSMaxVersion() uint16
 	TLSServerName() string
@@ -68,6 +69,7 @@ type ConfigYaml struct {
 	MaxResponseBodySizeValue int                         `env:"MAX_RESPONSE_BODY_SIZE" yaml:"max_response_body_size"`
 	MaxConnDurationValue     time.Duration               `env:"MAX_CONN_DURATION"      yaml:"max_conn_duration"`
 	StreamResponseBodyValue  bool                        `env:"STREAM_RESPONSE_BODY"   yaml:"stream_response_body"`
+	FollowRedirectsValue     bool                        `env:"FOLLOW_REDIRECTS"       yaml:"follow_redirects"`
 	TLSMinVersionValue       uint16                      `env:"TLS_MIN_VERSION"        yaml:"tls_min_version"`
 	TLSMaxVersionValue       uint16                      `env:"TLS_MAX_VERSION"        yaml:"tls_max_version"`
 	TLSServerNameValue       string                      `env:"TLS_SERVER_NAME"        yaml:"tls_server_name"`
@@ -175,6 +177,10 @@ func (c *ConfigYaml) MaxConnDuration() time.Duration {
 	}
 
 	return c.MaxConnDurationValue
+}
+
+func (c *ConfigYaml) FollowRedirects() bool {
+	return c.FollowRedirectsValue
 }
 
 func (c *ConfigYaml) StreamResponseBody() bool {

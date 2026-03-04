@@ -29,6 +29,8 @@ var (
 	ErrBothFormDataAndBody = errors.New("both form data and body provided")
 )
 
+const maxRedirectsCount = 20
+
 //go:generate mockgen -destination mocks/http_client_gen.go -source http_client.go
 type Client interface {
 	Get(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
@@ -352,7 +354,15 @@ func (c *ClientImpl) performRequest(ctx context.Context, method, uri string, cfg
 		return nil, err
 	}
 
-	err := c.client.DoTimeout(req, resp, c.config.Timeout())
+	req.SetTimeout(c.config.Timeout())
+
+	var err error
+
+	if c.config.FollowRedirects() {
+		err = c.client.DoRedirects(req, resp, maxRedirectsCount)
+	} else {
+		err = c.client.Do(req, resp)
+	}
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

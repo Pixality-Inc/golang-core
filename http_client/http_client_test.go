@@ -55,6 +55,7 @@ func (c *testConfig) WriteBufferSize() int                   { return DefaultWri
 func (c *testConfig) MaxResponseBodySize() int               { return 0 }
 func (c *testConfig) MaxConnDuration() time.Duration         { return DefaultMaxConnDuration }
 func (c *testConfig) StreamResponseBody() bool               { return false }
+func (c *testConfig) FollowRedirects() bool                  { return false }
 func (c *testConfig) TLSMinVersion() uint16                  { return 0 }
 func (c *testConfig) TLSMaxVersion() uint16                  { return 0 }
 func (c *testConfig) TLSServerName() string                  { return "" }
