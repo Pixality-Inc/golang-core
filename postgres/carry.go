@@ -5,11 +5,11 @@ import "context"
 type CarryFunc = func(ctx context.Context, queryRunner QueryRunner) error
 
 type (
-	DaoFunc0                                 = func(ctx context.Context, queryRunner QueryRunner) error
-	DaoFunc1[P1 any]                         = func(ctx context.Context, queryRunner QueryRunner, p1 P1) error
-	DaoFunc2[P1 any, P2 any]                 = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2) error
-	DaoFunc3[P1 any, P2 any, P3 any]         = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2, p3 P3) error
-	DaoFunc4[P1 any, P2 any, P3 any, P4 any] = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2, p3 P3, p4 P4) error
+	DaoFunc0                                 = func(ctx context.Context, queryRunner QueryRunner) (QueryResult, error)
+	DaoFunc1[P1 any]                         = func(ctx context.Context, queryRunner QueryRunner, p1 P1) (QueryResult, error)
+	DaoFunc2[P1 any, P2 any]                 = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2) (QueryResult, error)
+	DaoFunc3[P1 any, P2 any, P3 any]         = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2, p3 P3) (QueryResult, error)
+	DaoFunc4[P1 any, P2 any, P3 any, P4 any] = func(ctx context.Context, queryRunner QueryRunner, p1 P1, p2 P2, p3 P3, p4 P4) (QueryResult, error)
 )
 
 type (
@@ -28,30 +28,37 @@ func CarryTxFunc(ctx context.Context, f CarryFunc) TransactionFunc {
 }
 
 func CarryDaoFunc0(f DaoFunc0) CarryFunc {
-	return f
+	return func(ctx context.Context, queryRunner QueryRunner) error {
+		_, err := f(ctx, queryRunner)
+		return err
+	}
 }
 
 func CarryDaoFunc1[P1 any](f DaoFunc1[P1], p1 P1) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
-		return f(ctx, queryRunner, p1)
+		_, err := f(ctx, queryRunner, p1)
+		return err
 	}
 }
 
 func CarryDaoFunc2[P1 any, P2 any](f DaoFunc2[P1, P2], p1 P1, p2 P2) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
-		return f(ctx, queryRunner, p1, p2)
+		_, err := f(ctx, queryRunner, p1, p2)
+		return err
 	}
 }
 
 func CarryDaoFunc3[P1 any, P2 any, P3 any](f DaoFunc3[P1, P2, P3], p1 P1, p2 P2, p3 P3) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
-		return f(ctx, queryRunner, p1, p2, p3)
+		_, err := f(ctx, queryRunner, p1, p2, p3)
+		return err
 	}
 }
 
 func CarryDaoFunc4[P1 any, P2 any, P3 any, P4 any](f DaoFunc4[P1, P2, P3, P4], p1 P1, p2 P2, p3 P3, p4 P4) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
-		return f(ctx, queryRunner, p1, p2, p3, p4)
+		_, err := f(ctx, queryRunner, p1, p2, p3, p4)
+		return err
 	}
 }
 
