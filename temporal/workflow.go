@@ -10,7 +10,7 @@ import (
 
 type Workflow interface {
 	Name() WorkflowName
-	Apply(ctx context.Context, workflowId string, queue string, input any) (client.WorkflowRun, error)
+	Apply(ctx context.Context, workflowId string, queue string, input any, options ...StartWorkflowOption) (client.WorkflowRun, error)
 }
 
 type WorkflowImpl struct {
@@ -39,13 +39,19 @@ func (w *WorkflowImpl) Name() WorkflowName {
 	return w.config.Name
 }
 
-func (w *WorkflowImpl) Apply(ctx context.Context, workflowId string, queue string, input any) (client.WorkflowRun, error) {
+func (w *WorkflowImpl) Apply(ctx context.Context, workflowId string, queue string, input any, options ...StartWorkflowOption) (client.WorkflowRun, error) {
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        workflowId,
+		TaskQueue: queue,
+	}
+
+	for _, option := range options {
+		option(&workflowOptions)
+	}
+
 	return w.worker.ExecuteWorkflow(
 		ctx,
-		client.StartWorkflowOptions{
-			ID:        workflowId,
-			TaskQueue: queue,
-		},
+		workflowOptions,
 		w.Name(),
 		input,
 	)

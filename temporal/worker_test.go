@@ -50,7 +50,7 @@ type testWorkflow struct{}
 
 func (t testWorkflow) Name() WorkflowName { return "TestWorkflow" }
 
-func (t testWorkflow) Apply(_ context.Context, _ string, _ string, _ any) (client.WorkflowRun, error) {
+func (t testWorkflow) Apply(_ context.Context, _ string, _ string, _ any, _ ...StartWorkflowOption) (client.WorkflowRun, error) {
 	return nil, nil
 }
 
