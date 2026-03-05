@@ -22,7 +22,7 @@ type (
 func wrapQueryWithLogger(
 	ctx context.Context,
 	query Query,
-	fn func(sqlQuery string, args []any, err error) (QueryResult, error),
+	fn func(sqlQuery string, args []any) (QueryResult, error),
 ) (QueryResult, error) {
 	log := logger.GetLogger(ctx)
 
@@ -56,7 +56,7 @@ func wrapQueryWithLogger(
 		return nil, queryErr
 	}
 
-	result, err := fn(sqlQuery, args, queryErr)
+	result, err := fn(sqlQuery, args)
 	if err != nil {
 		err = fmt.Errorf("query %s failed with params %+v: %w", sqlQuery, args, err)
 
@@ -83,11 +83,7 @@ func ExecuteQuery(
 	return wrapQueryWithLogger(
 		ctx,
 		query,
-		func(sqlQuery string, args []any, err error) (QueryResult, error) {
-			if err != nil {
-				return nil, fmt.Errorf("sql build failed: %w", err)
-			}
-
+		func(sqlQuery string, args []any) (QueryResult, error) {
 			result, err := queryExecutor.Exec(ctx, sqlQuery, args...)
 			if err != nil {
 				return nil, fmt.Errorf("sql exec failed: %w", err)
@@ -107,11 +103,7 @@ func ExecuteQueryRows(ctx context.Context, queryRunner QueryRunner, query Query,
 	return wrapQueryWithLogger(
 		ctx,
 		query,
-		func(sqlQuery string, args []any, err error) (QueryResult, error) {
-			if err != nil {
-				return nil, fmt.Errorf("sql build failed: %w", err)
-			}
-
+		func(sqlQuery string, args []any) (QueryResult, error) {
 			rows, err := queryExecutor.Query(ctx, sqlQuery, args...)
 			if err != nil {
 				return nil, fmt.Errorf("sql query failed: %w", err)
