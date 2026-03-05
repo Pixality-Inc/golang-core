@@ -6,8 +6,8 @@ import (
 	"github.com/pixality-inc/golang-core/circuit_breaker"
 	"github.com/pixality-inc/golang-core/logger"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Query interface {

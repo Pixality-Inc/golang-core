@@ -10,9 +10,9 @@ import (
 	"github.com/pixality-inc/golang-core/circuit_breaker"
 	"github.com/pixality-inc/golang-core/logger"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -121,7 +121,7 @@ func (d *DatabaseImpl) BeginTxFunc(ctx context.Context, opts pgx.TxOptions, txFu
 	}
 
 	return circuit_breaker.Execute(d.circuitBreaker, func() error {
-		return d.pool.BeginTxFunc(ctx, opts, txFunc)
+		return pgx.BeginTxFunc(ctx, d.pool, opts, txFunc)
 	})
 }
 
@@ -151,7 +151,7 @@ func (d *DatabaseImpl) ensureConnected() error {
 	}
 
 	connectFunc := func() error {
-		thePool, err := pgxpool.ConnectConfig(d.ctx, d.poolConfig)
+		thePool, err := pgxpool.NewWithConfig(d.ctx, d.poolConfig)
 		if err != nil {
 			return err
 		}

@@ -897,12 +897,11 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	{
 		format := `func (d *%s) Create(ctx context.Context, queryRunner postgres.QueryRunner, a %s) error {
   query, err := postgres.BuildSimpleInsertQuery(d.baseInsertQuery(), d.insertColumns, a)
-
 	if err != nil {
 		return fmt.Errorf("sql failed to build insert for query %%v: %%w", query, err)
 	}
 
-	if err := postgres.ExecuteQuery(ctx, queryRunner, query); err != nil {
+	if _, err := postgres.ExecuteQuery(ctx, queryRunner, query); err != nil {
 		return err
 	}
 
@@ -921,12 +920,11 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 	{
 		format := `func (d *%s) CreateBatch(ctx context.Context, queryRunner postgres.QueryRunner, arr []%s) error {
 	query, err := postgres.BuildBulkInsertQuery(d.baseInsertQuery(), d.insertColumns, arr)
-
 	if err != nil {
 		return fmt.Errorf("sql failed to build insert for query %%v: %%w", query, err)
 	}
 
-	if err := postgres.ExecuteQuery(ctx, queryRunner, query); err != nil {
+	if _, err := postgres.ExecuteQuery(ctx, queryRunner, query); err != nil {
 		return err
 	}
 
@@ -948,7 +946,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 
 	var rows []%s
 
-	if err := postgres.ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+	if _, err := postgres.ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return nil, err
 	}
 
@@ -974,7 +972,7 @@ func (g *Gen) generateFile(ctx context.Context, request *GenerateRequest, filena
 
 	var rows []%s
 
-	if err := postgres.ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+	if _, err := postgres.ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return nil, err
 	}
 

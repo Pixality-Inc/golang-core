@@ -9,8 +9,8 @@ import (
 	"github.com/pixality-inc/golang-core/timetrack"
 	"github.com/pixality-inc/golang-core/util"
 
-	"github.com/georgysavva/scany/pgxscan"
-	"github.com/jackc/pgx/v4"
+	"github.com/georgysavva/scany/v2/pgxscan"
+	"github.com/jackc/pgx/v5"
 	"github.com/pixality-inc/squirrel"
 )
 
@@ -22,8 +22,8 @@ type (
 func wrapQueryWithLogger(
 	ctx context.Context,
 	query Query,
-	fn func(sqlQuery string, args []any, err error) error,
-) error {
+	fn func(sqlQuery string, args []any) (QueryResult, error),
+) (QueryResult, error) {
 	log := logger.GetLogger(ctx)
 
 	queryTimeTracker := timetrack.New(ctx)
@@ -53,74 +53,67 @@ func wrapQueryWithLogger(
 
 		logError(queryErr)
 
-		return queryErr
+		return nil, queryErr
 	}
 
-	if err := fn(sqlQuery, args, queryErr); err != nil {
+	result, err := fn(sqlQuery, args)
+	if err != nil {
 		err = fmt.Errorf("query %s failed with params %+v: %w", sqlQuery, args, err)
 
 		logError(err)
 
-		return err
+		return nil, err
 	}
 
 	logSuccess()
 
-	return nil
+	return result, nil
 }
 
 func ExecuteQuery(
 	ctx context.Context,
 	queryRunner QueryRunner,
 	query Query,
-) error {
+) (QueryResult, error) {
 	queryExecutor, err := queryRunner.Executor()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return wrapQueryWithLogger(
 		ctx,
 		query,
-		func(sqlQuery string, args []any, err error) error {
+		func(sqlQuery string, args []any) (QueryResult, error) {
+			result, err := queryExecutor.Exec(ctx, sqlQuery, args...)
 			if err != nil {
-				return fmt.Errorf("sql build failed: %w", err)
+				return nil, fmt.Errorf("sql exec failed: %w", err)
 			}
 
-			_, err = queryExecutor.Exec(ctx, sqlQuery, args...)
-			if err != nil {
-				return fmt.Errorf("sql exec failed: %w", err)
-			}
-
-			return nil
+			return NewQueryResult(result.RowsAffected()), nil
 		},
 	)
 }
 
-func ExecuteQueryRows(ctx context.Context, queryRunner QueryRunner, query Query, dst any) error {
+func ExecuteQueryRows(ctx context.Context, queryRunner QueryRunner, query Query, dst any) (QueryResult, error) {
 	queryExecutor, err := queryRunner.Executor()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return wrapQueryWithLogger(
 		ctx,
 		query,
-		func(sqlQuery string, args []any, err error) error {
-			if err != nil {
-				return fmt.Errorf("sql build failed: %w", err)
-			}
-
+		func(sqlQuery string, args []any) (QueryResult, error) {
 			rows, err := queryExecutor.Query(ctx, sqlQuery, args...)
 			if err != nil {
-				return fmt.Errorf("sql query failed: %w", err)
+				return nil, fmt.Errorf("sql query failed: %w", err)
 			}
 
 			if err = pgxscan.ScanAll(dst, rows); !errors.Is(err, pgx.ErrNoRows) && err != nil {
-				return fmt.Errorf("sql result scan failed: %w", err)
+				return nil, fmt.Errorf("sql result scan failed: %w", err)
 			}
 
-			return nil
+			return NewEmptyQueryResult(), nil
 		},
 	)
 }
@@ -229,7 +222,7 @@ func FetchRowsSimple[R any](
 ) ([]R, error) {
 	var rows []R
 
-	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+	if _, err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return nil, err
 	}
 
@@ -258,7 +251,7 @@ func FetchRowSimple[R any](
 ) (R, error) {
 	var rows []R
 
-	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+	if _, err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return defaultValue, err
 	}
 
@@ -278,7 +271,7 @@ func FetchRow[R any, M any](
 ) (M, error) {
 	var rows []R
 
-	if err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
+	if _, err := ExecuteQueryRows(ctx, queryRunner, query, &rows); err != nil {
 		return defaultValue, err
 	}
 
