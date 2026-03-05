@@ -42,7 +42,20 @@ func NewWorker(
 	queue string,
 	identifier string,
 	config WorkerConfig,
+	options ...WorkerOption,
 ) Worker {
+	workerOptions := worker.Options{
+		BackgroundActivityContext:          ctx,
+		Identity:                           identifier,
+		MaxConcurrentActivityExecutionSize: config.MaxConcurrentActivityExecutionSize,
+		WorkerActivitiesPerSecond:          config.MaxActivitiesPerSecond,
+		WorkerStopTimeout:                  config.WorkerStopTimeout,
+	}
+
+	for _, option := range options {
+		option(&workerOptions)
+	}
+
 	return &WorkerImpl{
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"temporal_worker",
@@ -50,14 +63,8 @@ func NewWorker(
 				"name": config.Name,
 			},
 		),
-		client: client,
-		worker: worker.New(client, queue, worker.Options{
-			BackgroundActivityContext:          ctx,
-			Identity:                           identifier,
-			MaxConcurrentActivityExecutionSize: config.MaxConcurrentActivityExecutionSize,
-			WorkerActivitiesPerSecond:          config.MaxActivitiesPerSecond,
-			WorkerStopTimeout:                  config.WorkerStopTimeout,
-		}),
+		client:     client,
+		worker:     worker.New(client, queue, workerOptions),
 		identifier: identifier,
 	}
 }
