@@ -119,13 +119,17 @@ func NewJsonRef[T any](data *T) *Json[T] {
 }
 
 func (j *Json[T]) Scan(value any) error {
-	val, ok := value.([]byte)
-
-	if !ok {
-		return fmt.Errorf("%w: got %T", errExpectedBytesToJSON, val)
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return fmt.Errorf("%w: got %T", errExpectedBytesToJSON, value)
 	}
 
-	if err := json.Unmarshal(val, &j.Data); err != nil {
+	if err := json.Unmarshal(bytes, &j.Data); err != nil {
 		return err
 	}
 
