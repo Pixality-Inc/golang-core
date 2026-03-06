@@ -30,6 +30,7 @@ func CarryTxFunc(ctx context.Context, f CarryFunc) TransactionFunc {
 func CarryDaoFunc0(f DaoFunc0) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
 		_, err := f(ctx, queryRunner)
+
 		return err
 	}
 }
@@ -37,6 +38,7 @@ func CarryDaoFunc0(f DaoFunc0) CarryFunc {
 func CarryDaoFunc1[P1 any](f DaoFunc1[P1], p1 P1) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
 		_, err := f(ctx, queryRunner, p1)
+
 		return err
 	}
 }
@@ -44,6 +46,7 @@ func CarryDaoFunc1[P1 any](f DaoFunc1[P1], p1 P1) CarryFunc {
 func CarryDaoFunc2[P1 any, P2 any](f DaoFunc2[P1, P2], p1 P1, p2 P2) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
 		_, err := f(ctx, queryRunner, p1, p2)
+
 		return err
 	}
 }
@@ -51,6 +54,7 @@ func CarryDaoFunc2[P1 any, P2 any](f DaoFunc2[P1, P2], p1 P1, p2 P2) CarryFunc {
 func CarryDaoFunc3[P1 any, P2 any, P3 any](f DaoFunc3[P1, P2, P3], p1 P1, p2 P2, p3 P3) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
 		_, err := f(ctx, queryRunner, p1, p2, p3)
+
 		return err
 	}
 }
@@ -58,6 +62,7 @@ func CarryDaoFunc3[P1 any, P2 any, P3 any](f DaoFunc3[P1, P2, P3], p1 P1, p2 P2,
 func CarryDaoFunc4[P1 any, P2 any, P3 any, P4 any](f DaoFunc4[P1, P2, P3, P4], p1 P1, p2 P2, p3 P3, p4 P4) CarryFunc {
 	return func(ctx context.Context, queryRunner QueryRunner) error {
 		_, err := f(ctx, queryRunner, p1, p2, p3, p4)
+
 		return err
 	}
 }

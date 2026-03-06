@@ -28,6 +28,10 @@ func (f *fakeClock) Since(_ time.Time) time.Duration {
 	return f.sinceResult
 }
 
+func (f *fakeClock) After(_ time.Duration) <-chan time.Time {
+	panic("not implemented")
+}
+
 func TestImpl_Now(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ type Clock interface {
 	Now() time.Time
 	Sleep(duration time.Duration)
 	Since(value time.Time) time.Duration
+	After(duration time.Duration) <-chan time.Time
 }
 
 var Default = New()
@@ -22,6 +23,10 @@ func (c *Impl) Sleep(duration time.Duration) {
 
 func (c *Impl) Since(value time.Time) time.Duration {
 	return time.Since(value)
+}
+
+func (c *Impl) After(duration time.Duration) <-chan time.Time {
+	return time.After(duration)
 }
 
 func New() *Impl {
