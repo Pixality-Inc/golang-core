@@ -1,4 +1,4 @@
-package ticker
+package scheduler
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func (c *fakeClock) Advance(value time.Time) {
 	c.ch <- value
 }
 
-type tickerSupport struct {
+type schedulerSupport struct {
 	tickCalls       atomic.Int32
 	hasNextCalls    atomic.Int32
 	maxHasNextCalls int32
@@ -38,8 +38,8 @@ type tickerSupport struct {
 	hasNext         func(ctx context.Context) bool
 }
 
-func newTickerSupport(maxHasNextCalls int32) *tickerSupport {
-	support := &tickerSupport{
+func newSchedulerSupport(maxHasNextCalls int32) *schedulerSupport {
+	support := &schedulerSupport{
 		tickCalls:       atomic.Int32{},
 		hasNextCalls:    atomic.Int32{},
 		maxHasNextCalls: maxHasNextCalls,
@@ -58,31 +58,31 @@ func newTickerSupport(maxHasNextCalls int32) *tickerSupport {
 	return support
 }
 
-func (s *tickerSupport) Tick(ctx context.Context) {
+func (s *schedulerSupport) Tick(ctx context.Context) {
 	s.tick(ctx)
 }
 
-func (s *tickerSupport) HasNext(ctx context.Context) bool {
+func (s *schedulerSupport) HasNext(ctx context.Context) bool {
 	return s.hasNext(ctx)
 }
 
-func Test_Ticker(t *testing.T) {
+func Test_Scheduler(t *testing.T) {
 	t.Parallel()
 
 	clocks := newFakeClock()
 
 	ctx := clock.WithClock(context.Background(), clocks)
 
-	support := newTickerSupport(3)
+	support := newSchedulerSupport(3)
 
-	ticker := NewFromHandler(100*time.Millisecond, support)
+	scheduler := NewFromHandler(100*time.Millisecond, support)
 
 	go func() {
-		_ = ticker.Start(ctx) // nolint:errcheck
+		_ = scheduler.Start(ctx) // nolint:errcheck
 	}()
 
 	clocks.Advance(time.Now())
 
-	require.Equal(t, int32(3), support.tickCalls.Load())
+	require.Equal(t, int32(2), support.tickCalls.Load())
 	require.Equal(t, int32(3), support.hasNextCalls.Load())
 }

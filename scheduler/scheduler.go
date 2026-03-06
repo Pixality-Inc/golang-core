@@ -1,4 +1,4 @@
-package ticker
+package scheduler
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 var errContext = errors.New("context error")
 
-type Ticker interface {
+type Scheduler interface {
 	Start(ctx context.Context) error
 }
 
@@ -24,7 +24,7 @@ func New(
 	duration time.Duration,
 	tick func(ctx context.Context),
 	hasNext func(ctx context.Context) bool,
-) Ticker {
+) Scheduler {
 	return &Impl{
 		duration: duration,
 		tick:     tick,
@@ -35,7 +35,7 @@ func New(
 func NewFromHandler(
 	duration time.Duration,
 	handler Handler,
-) Ticker {
+) Scheduler {
 	return New(duration, handler.Tick, handler.HasNext)
 }
 
@@ -50,6 +50,10 @@ func (t *Impl) Start(ctx context.Context) error {
 		case <-clocks.After(t.duration):
 			if err := ctx.Err(); err != nil {
 				return errors.Join(errContext, err)
+			}
+
+			if !t.hasNext(ctx) {
+				continue
 			}
 
 			t.tick(ctx)
