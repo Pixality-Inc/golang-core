@@ -52,6 +52,26 @@ func (p *pollSupport[T]) check(ctx context.Context) (T, error) {
 	return p.value, ErrNoValue
 }
 
+type untypedPollSupport struct {
+	calls       atomic.Int32
+	returnAfter int32
+}
+
+func newUntypedPollSupport(returnAfter int32) *untypedPollSupport {
+	return &untypedPollSupport{
+		calls:       atomic.Int32{},
+		returnAfter: returnAfter,
+	}
+}
+
+func (p *untypedPollSupport) check(ctx context.Context) error {
+	if p.calls.Add(1) > p.returnAfter {
+		return nil
+	}
+
+	return ErrNoValue
+}
+
 func Test_Poll(t *testing.T) {
 	t.Parallel()
 
@@ -75,4 +95,28 @@ func Test_Poll(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 100500, result)
 	require.Equal(t, int32(4), support.calls.Load())
+}
+
+func Test_Poll_Untyped(t *testing.T) {
+	t.Parallel()
+
+	clocks := newFakeClock()
+	ctx := clock.WithClock(context.Background(), clocks)
+
+	support := newUntypedPollSupport(2)
+
+	poll := NewUntyped(100*time.Millisecond, support.check)
+
+	ch := poll.Poll(ctx)
+
+	go func() {
+		for range 3 {
+			clocks.Advance(time.Now())
+		}
+	}()
+
+	_, ok := <-ch
+
+	require.True(t, ok)
+	require.Equal(t, int32(3), support.calls.Load())
 }
