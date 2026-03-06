@@ -71,6 +71,8 @@ func (p *Impl[T]) Poll(ctx context.Context) chan T {
 					return
 				default:
 					ch <- result
+
+					return
 				}
 			}
 		}
