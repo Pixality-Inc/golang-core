@@ -32,6 +32,13 @@ func New(
 	}
 }
 
+func NewFromHandler(
+	duration time.Duration,
+	handler Handler,
+) Ticker {
+	return New(duration, handler.Tick, handler.HasNext)
+}
+
 func (t *Impl) Start(ctx context.Context) error {
 	clocks := clock.GetClock(ctx)
 

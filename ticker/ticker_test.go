@@ -58,6 +58,14 @@ func newTickerSupport(maxHasNextCalls int32) *tickerSupport {
 	return support
 }
 
+func (s *tickerSupport) Tick(ctx context.Context) {
+	s.tick(ctx)
+}
+
+func (s *tickerSupport) HasNext(ctx context.Context) bool {
+	return s.hasNext(ctx)
+}
+
 func Test_Ticker(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +75,7 @@ func Test_Ticker(t *testing.T) {
 
 	support := newTickerSupport(3)
 
-	ticker := New(100*time.Millisecond, support.tick, support.hasNext)
+	ticker := NewFromHandler(100*time.Millisecond, support)
 
 	go func() {
 		_ = ticker.Start(ctx) // nolint:errcheck
