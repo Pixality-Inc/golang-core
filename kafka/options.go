@@ -39,6 +39,7 @@ type ConsumerOption func(*consumerOptions)
 
 type consumerOptions struct {
 	commonOptions
+
 	decodeErrorHandler    DecodeErrorHandler
 	maxProcessingAttempts int
 	failedMessageHandler  FailedMessageHandler
