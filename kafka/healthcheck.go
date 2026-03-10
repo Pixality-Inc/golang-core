@@ -7,11 +7,6 @@ import (
 
 const defaultHealthcheckTimeout = 2 * time.Second
 
-type Pingable interface {
-	IsConnected() bool
-	Ping(ctx context.Context) error
-}
-
 type HealthcheckOption func(*HealthcheckService)
 
 func WithHealthcheckTimeout(timeout time.Duration) HealthcheckOption {

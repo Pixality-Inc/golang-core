@@ -21,6 +21,8 @@ const (
 	actionSkip
 )
 
+const defaultRetryDelay = time.Second
+
 type Handler[T any] func(ctx context.Context, msg Message[T]) error
 
 // DecodeErrorHandler is called when a consumed message cannot be decoded.
@@ -30,9 +32,11 @@ type DecodeErrorHandler func(ctx context.Context, topic string, partition int32,
 
 type Consumer[T any] interface {
 	Consume(ctx context.Context, handler Handler[T]) error
-	IsConnected() bool
-	Ping(ctx context.Context) error
-	Stop() error
+}
+
+type ConsumerService[T any] interface {
+	Consumer[T]
+	Lifetime
 }
 
 // FailedMessageHandler is called when a message exhausts all processing attempts.
@@ -57,15 +61,17 @@ type consumerImpl[T any] struct {
 	decodeErrorHandler    DecodeErrorHandler
 	maxProcessingAttempts int
 	failedMessageHandler  FailedMessageHandler
-	attempts              map[topicPartitionOffset]int
+	// attempts tracks processing attempt counts per message.
+	// Not thread-safe — only accessed from the sequential Consume loop.
+	attempts map[topicPartitionOffset]int
 }
 
-func NewConsumer[T any](config ConsumerConfig, protocol Protocol[T], opts ...Option) (Consumer[T], error) {
+func NewConsumer[T any](config ConsumerConfig, protocol Protocol[T], opts ...ConsumerOption) (ConsumerService[T], error) {
 	if err := validateConsumerConfig(config); err != nil {
 		return nil, err
 	}
 
-	options := applyOptions(opts...)
+	options := applyConsumerOptions(opts...)
 
 	var cb circuit_breaker.CircuitBreaker
 	if options.circuitBreaker != nil {
@@ -168,10 +174,9 @@ func (c *consumerImpl[T]) Consume(ctx context.Context, handler Handler[T]) error
 			return ctx.Err()
 		}
 
-		fetches.EachError(func(topic string, partition int32, err error) {
+		fetches.EachError(func(_ string, partition int32, err error) {
 			c.log.GetLogger(ctx).
 				WithError(err).
-				WithField("topic", topic).
 				WithField("partition", partition).
 				Warn("fetch error")
 		})
@@ -238,54 +243,43 @@ func (c *consumerImpl[T]) processRecord(
 	record *kgo.Record,
 	handler Handler[T],
 ) bool {
+	log := c.log.GetLogger(ctx).
+		WithField("partition", record.Partition).
+		WithField("offset", record.Offset)
+
 	value, err := c.protocol.Decode(ctx, record.Value)
 	if err != nil {
 		if c.decodeErrorHandler != nil {
 			if handlerErr := c.decodeErrorHandler(ctx, record.Topic, record.Partition, record.Offset, err); handlerErr != nil {
-				c.log.GetLogger(ctx).
-					WithError(handlerErr).
-					WithField("topic", record.Topic).
-					WithField("partition", record.Partition).
-					WithField("offset", record.Offset).
-					Error("decode error handler rejected message")
+				log.WithError(handlerErr).Error("decode error handler rejected message")
 
 				return true
 			}
 		} else {
-			c.log.GetLogger(ctx).
-				WithError(err).
-				WithField("topic", record.Topic).
-				WithField("partition", record.Partition).
-				WithField("offset", record.Offset).
-				Error("failed to decode message, skipping")
+			log.WithError(err).Error("failed to decode message, skipping")
 		}
 
 		if c.config.AutoCommit() {
 			if commitErr := c.commitRecord(ctx, record); commitErr != nil {
-				c.log.GetLogger(ctx).
-					WithError(commitErr).
-					WithField("topic", record.Topic).
-					WithField("partition", record.Partition).
-					WithField("offset", record.Offset).
-					Error("failed to auto-commit skipped record")
+				log.WithError(commitErr).Error("failed to auto-commit skipped record")
 			}
 		}
 
 		return false
 	}
 
-	msg := Message[T]{
-		Value:     value,
-		Key:       record.Key,
-		Topic:     record.Topic,
-		Partition: record.Partition,
-		Offset:    record.Offset,
-		Timestamp: record.Timestamp,
-		Headers:   convertFromKgoHeaders(record.Headers),
-		Commit: func(commitCtx context.Context) error {
+	msg := NewMessage(
+		value,
+		record.Key,
+		record.Topic,
+		record.Partition,
+		record.Offset,
+		record.Timestamp,
+		convertFromKgoHeaders(record.Headers),
+		func(commitCtx context.Context) error {
 			return c.commitRecord(commitCtx, record)
 		},
-	}
+	)
 
 	tpo := topicPartitionOffset{
 		topic:     record.Topic,
@@ -301,14 +295,9 @@ func (c *consumerImpl[T]) processRecord(
 			break
 		}
 
-		c.log.GetLogger(ctx).
-			WithError(handlerErr).
-			WithField("topic", record.Topic).
-			WithField("partition", record.Partition).
-			WithField("offset", record.Offset).
-			Error("handler failed after retries")
+		log.WithError(handlerErr).Error("handler failed after retries")
 
-		switch c.handleFailedRecord(ctx, record, tpo, handlerErr) {
+		switch c.handleFailedRecord(ctx, record, tpo, handlerErr, log) {
 		case actionStop:
 			return true
 		case actionSkip:
@@ -322,7 +311,7 @@ func (c *consumerImpl[T]) processRecord(
 				select {
 				case <-ctx.Done():
 					return true
-				case <-time.After(time.Second):
+				case <-time.After(defaultRetryDelay):
 				}
 			}
 		}
@@ -332,12 +321,7 @@ func (c *consumerImpl[T]) processRecord(
 
 	if c.config.AutoCommit() {
 		if commitErr := c.commitRecord(ctx, record); commitErr != nil {
-			c.log.GetLogger(ctx).
-				WithError(commitErr).
-				WithField("topic", record.Topic).
-				WithField("partition", record.Partition).
-				WithField("offset", record.Offset).
-				Error("failed to auto-commit record")
+			log.WithError(commitErr).Error("failed to auto-commit record")
 		}
 	}
 
@@ -351,6 +335,7 @@ func (c *consumerImpl[T]) handleFailedRecord(
 	record *kgo.Record,
 	tpo topicPartitionOffset,
 	handlerErr error,
+	log logger.Logger,
 ) processAction {
 	if c.maxProcessingAttempts <= 0 {
 		return actionRetry
@@ -366,31 +351,17 @@ func (c *consumerImpl[T]) handleFailedRecord(
 
 	if c.failedMessageHandler != nil {
 		if fErr := c.failedMessageHandler(ctx, record.Topic, record.Partition, record.Offset, record.Value, handlerErr); fErr != nil {
-			c.log.GetLogger(ctx).
-				WithError(fErr).
-				WithField("topic", record.Topic).
-				WithField("partition", record.Partition).
-				WithField("offset", record.Offset).
-				Error("failed message handler returned error")
+			log.WithError(fErr).Error("failed message handler returned error")
 
 			return actionStop
 		}
 	} else {
-		c.log.GetLogger(ctx).
-			WithField("topic", record.Topic).
-			WithField("partition", record.Partition).
-			WithField("offset", record.Offset).
-			Warn("message exhausted all processing attempts, skipping")
+		log.Warn("message exhausted all processing attempts, skipping")
 	}
 
 	if c.config.AutoCommit() {
 		if commitErr := c.commitRecord(ctx, record); commitErr != nil {
-			c.log.GetLogger(ctx).
-				WithError(commitErr).
-				WithField("topic", record.Topic).
-				WithField("partition", record.Partition).
-				WithField("offset", record.Offset).
-				Error("failed to auto-commit exhausted record")
+			log.WithError(commitErr).Error("failed to auto-commit exhausted record")
 		}
 	}
 

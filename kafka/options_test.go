@@ -14,13 +14,13 @@ type stubCircuitBreaker struct{}
 func (s *stubCircuitBreaker) Execute(fn func() error) error                         { return fn() }
 func (s *stubCircuitBreaker) ExecuteWithResult(fn func() (any, error)) (any, error) { return fn() }
 
-func TestApplyOptions(t *testing.T) {
+func TestApplyConsumerOptions(t *testing.T) {
 	t.Parallel()
 
 	t.Run("empty options", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := applyOptions()
+		cfg := applyConsumerOptions()
 		require.Nil(t, cfg.circuitBreaker)
 		require.Nil(t, cfg.retryPolicy)
 		require.Nil(t, cfg.decodeErrorHandler)
@@ -28,19 +28,19 @@ func TestApplyOptions(t *testing.T) {
 		require.Nil(t, cfg.failedMessageHandler)
 	})
 
-	t.Run("WithCircuitBreaker", func(t *testing.T) {
+	t.Run("WithConsumerCircuitBreaker", func(t *testing.T) {
 		t.Parallel()
 
 		cb := &stubCircuitBreaker{}
-		cfg := applyOptions(WithCircuitBreaker(cb))
+		cfg := applyConsumerOptions(WithConsumerCircuitBreaker(cb))
 		require.Same(t, cb, cfg.circuitBreaker)
 	})
 
-	t.Run("WithRetryPolicy", func(t *testing.T) {
+	t.Run("WithConsumerRetryPolicy", func(t *testing.T) {
 		t.Parallel()
 
 		policy := &retry.ConfigYaml{EnabledValue: true, MaxAttemptsValue: 3}
-		cfg := applyOptions(WithRetryPolicy(policy))
+		cfg := applyConsumerOptions(WithConsumerRetryPolicy(policy))
 		require.Same(t, policy, cfg.retryPolicy)
 	})
 
@@ -48,14 +48,14 @@ func TestApplyOptions(t *testing.T) {
 		t.Parallel()
 
 		handler := func(_ context.Context, _ string, _ int32, _ int64, _ error) error { return nil }
-		cfg := applyOptions(WithDecodeErrorHandler(handler))
+		cfg := applyConsumerOptions(WithDecodeErrorHandler(handler))
 		require.NotNil(t, cfg.decodeErrorHandler)
 	})
 
 	t.Run("WithMaxProcessingAttempts", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := applyOptions(WithMaxProcessingAttempts(5))
+		cfg := applyConsumerOptions(WithMaxProcessingAttempts(5))
 		require.Equal(t, 5, cfg.maxProcessingAttempts)
 	})
 
@@ -63,7 +63,35 @@ func TestApplyOptions(t *testing.T) {
 		t.Parallel()
 
 		handler := func(_ context.Context, _ string, _ int32, _ int64, _ []byte, _ error) error { return nil }
-		cfg := applyOptions(WithFailedMessageHandler(handler))
+		cfg := applyConsumerOptions(WithFailedMessageHandler(handler))
 		require.NotNil(t, cfg.failedMessageHandler)
+	})
+}
+
+func TestApplyProducerOptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty options", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := applyProducerOptions()
+		require.Nil(t, cfg.circuitBreaker)
+		require.Nil(t, cfg.retryPolicy)
+	})
+
+	t.Run("WithProducerCircuitBreaker", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &stubCircuitBreaker{}
+		cfg := applyProducerOptions(WithProducerCircuitBreaker(cb))
+		require.Same(t, cb, cfg.circuitBreaker)
+	})
+
+	t.Run("WithProducerRetryPolicy", func(t *testing.T) {
+		t.Parallel()
+
+		policy := &retry.ConfigYaml{EnabledValue: true, MaxAttemptsValue: 3}
+		cfg := applyProducerOptions(WithProducerRetryPolicy(policy))
+		require.Same(t, policy, cfg.retryPolicy)
 	})
 }

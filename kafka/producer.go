@@ -14,39 +14,11 @@ import (
 
 type Producer[T any] interface {
 	Produce(ctx context.Context, value T, opts ...ProduceOption) error
-	ProduceBatch(ctx context.Context, values []T, opts ...ProduceOption) error
-	IsConnected() bool
-	Ping(ctx context.Context) error
-	Stop() error
 }
 
-// BatchProduceError is returned by ProduceBatch when some records in the batch fail.
-// Errors slice has the same length as the input values: nil entries indicate success.
-type BatchProduceError struct {
-	Errors []error
-}
-
-func (e *BatchProduceError) Error() string {
-	var count int
-
-	for _, err := range e.Errors {
-		if err != nil {
-			count++
-		}
-	}
-
-	return fmt.Sprintf("batch produce: %d of %d records failed", count, len(e.Errors))
-}
-
-func (e *BatchProduceError) Unwrap() []error {
-	errs := make([]error, 0, len(e.Errors))
-	for _, err := range e.Errors {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errs
+type ProducerService[T any] interface {
+	Producer[T]
+	Lifetime
 }
 
 type producerImpl[T any] struct {
@@ -59,12 +31,12 @@ type producerImpl[T any] struct {
 	retryPolicy    retry.Policy
 }
 
-func NewProducer[T any](config Config, protocol Protocol[T], opts ...Option) (Producer[T], error) {
+func NewProducer[T any](config Config, protocol Protocol[T], opts ...ProducerOption) (ProducerService[T], error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
 
-	options := applyOptions(opts...)
+	options := applyProducerOptions(opts...)
 
 	var cb circuit_breaker.CircuitBreaker
 	if options.circuitBreaker != nil {
@@ -147,52 +119,6 @@ func (p *producerImpl[T]) Produce(ctx context.Context, value T, opts ...ProduceO
 	_, err = retry.Do(ctx, p.retryPolicy, p.log, func() (struct{}, error) {
 		produceErr := circuit_breaker.Execute(p.circuitBreaker, func() error {
 			return client.ProduceSync(ctx, record).FirstErr()
-		})
-
-		return struct{}{}, produceErr
-	})
-
-	return err
-}
-
-func (p *producerImpl[T]) ProduceBatch(ctx context.Context, values []T, opts ...ProduceOption) error {
-	client, err := p.ensureConnected(ctx)
-	if err != nil {
-		return err
-	}
-
-	cfg := applyProduceOptions(opts...)
-	records := make([]*kgo.Record, 0, len(values))
-
-	for _, value := range values {
-		data, err := p.protocol.Encode(ctx, value)
-		if err != nil {
-			return fmt.Errorf("failed to encode message: %w", err)
-		}
-
-		records = append(records, buildRecord(p.config.Topic(), data, cfg))
-	}
-
-	_, err = retry.Do(ctx, p.retryPolicy, p.log, func() (struct{}, error) {
-		produceErr := circuit_breaker.Execute(p.circuitBreaker, func() error {
-			results := client.ProduceSync(ctx, records...)
-
-			var hasError bool
-
-			errs := make([]error, len(results))
-
-			for i, r := range results {
-				if r.Err != nil {
-					errs[i] = r.Err
-					hasError = true
-				}
-			}
-
-			if hasError {
-				return &BatchProduceError{Errors: errs}
-			}
-
-			return nil
 		})
 
 		return struct{}{}, produceErr
