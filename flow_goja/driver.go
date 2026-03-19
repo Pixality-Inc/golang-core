@@ -14,6 +14,7 @@ import (
 var (
 	ErrWrongValue           = errors.New("wrong value")
 	ErrJsValueToStringArray = errors.New("js value to string array")
+	ErrJsValueToAnyArray    = errors.New("js value to any array")
 )
 
 type Goja struct {
@@ -119,6 +120,22 @@ func (d *Goja) ValueToStringSlice(value any) ([]string, error) {
 func (d *Goja) ValueToMapStringString(value any) (map[string]string, error) {
 	// @todo fixme
 	return nil, util.ErrNotImplemented
+}
+
+func (d *Goja) ValueToMapStringAny(value any) (map[string]any, error) {
+	val, ok := value.(goja.Value)
+	if !ok {
+		return nil, fmt.Errorf("%w: value %T is not a goja.Value", ErrWrongValue, value)
+	}
+
+	exportedValue := val.Export()
+
+	mapValue, ok := (exportedValue).(map[string]any)
+	if ok {
+		return mapValue, nil
+	}
+
+	return map[string]any{"__value": exportedValue}, nil
 }
 
 func (d *Goja) AnyToValue(value any) (any, error) {

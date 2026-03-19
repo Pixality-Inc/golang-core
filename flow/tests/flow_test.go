@@ -70,6 +70,7 @@ func TestFlowValidate(t *testing.T) {
 				nil,
 				nil,
 				nil,
+				nil,
 			)
 
 			err := flowEngine.Validate(ctx)
@@ -103,6 +104,7 @@ func TestFlowEval(t *testing.T) {
 		nil,
 		templateDriverMock,
 		scriptDriverMock,
+		nil,
 	)
 
 	// EvalTemplate
@@ -283,6 +285,7 @@ func TestFlow(t *testing.T) {
 		templateDriverMock func() flow.TemplateDriver
 		scriptDriverMock   func() flow.ScriptDriver
 		localStorageMock   func() storage.LocalStorage
+		triggers           func() map[string]flow.ActionTriggerFunc
 		wantResult         *flow.Result
 		wantResultLen      int
 		wantErr            error
@@ -335,6 +338,18 @@ func TestFlow(t *testing.T) {
 			actions: []flow.Action{
 				flow.NewAction("test").
 					WithScript("hello").
+					WithScriptFile("hello.js"),
+			},
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			wantErr:            flow.ErrActionTooManyOptions,
+		},
+		{
+			name: "too_many_options4",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test")).
 					WithScriptFile("hello.js"),
 			},
 			templateDriverMock: noTemplateDriverMock,
@@ -943,11 +958,151 @@ func TestFlow(t *testing.T) {
 			localStorageMock:   noLocalStorageMock,
 			wantErr:            flow.ErrNoScriptDriver,
 		},
+		{
+			name: "trigger_not_found",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("not_found")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			wantErr:            flow.ErrTriggerNotFound,
+		},
+		{
+			name: "trigger_failed",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			triggers: func() map[string]flow.ActionTriggerFunc {
+				return map[string]flow.ActionTriggerFunc{
+					"test": func(ctx context.Context, data map[string]any) (map[string]any, error) {
+						return nil, errTestError
+					},
+				}
+			},
+			wantErr: flow.ErrTriggerFailed,
+		},
+		{
+			name: "trigger_no_data",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			triggers: func() map[string]flow.ActionTriggerFunc {
+				return map[string]flow.ActionTriggerFunc{
+					"test": func(ctx context.Context, data map[string]any) (map[string]any, error) {
+						return nil, nil
+					},
+				}
+			},
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithResult("null"),
+				},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "trigger_result",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			triggers: func() map[string]flow.ActionTriggerFunc {
+				return map[string]flow.ActionTriggerFunc{
+					"test": func(ctx context.Context, data map[string]any) (map[string]any, error) {
+						return map[string]any{"test": 111}, nil
+					},
+				}
+			},
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithResult(`{"test":111}`),
+				},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "trigger_data",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test").WithData(map[string]any{"a": 1})),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			triggers: func() map[string]flow.ActionTriggerFunc {
+				return map[string]flow.ActionTriggerFunc{
+					"test": func(ctx context.Context, data map[string]any) (map[string]any, error) {
+						return data, nil
+					},
+				}
+			},
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithResult(`{"a":1}`),
+				},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "trigger_data_script",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithTrigger(flow.NewActionTrigger("test").WithDataScript("test script")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock: func() flow.ScriptDriver {
+				mock := mockFlow.NewMockScriptDriver(mockCtrl)
+
+				mock.EXPECT().Execute(ctx, defaultEnv, "action.test.trigger.data_script", "test script").Return("test", nil)
+				mock.EXPECT().ValueToMapStringAny("test").Return(map[string]any{"b": 3.14}, nil)
+
+				return mock
+			},
+			localStorageMock: noLocalStorageMock,
+			triggers: func() map[string]flow.ActionTriggerFunc {
+				return map[string]flow.ActionTriggerFunc{
+					"test": func(ctx context.Context, data map[string]any) (map[string]any, error) {
+						return data, nil
+					},
+				}
+			},
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithResult(`{"b":3.14}`),
+				},
+			},
+			wantResultLen: 1,
+		},
 	}
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
+
+			var triggers map[string]flow.ActionTriggerFunc
+
+			if testCase.triggers != nil {
+				triggers = testCase.triggers()
+			}
 
 			flowEngine := flow.New(
 				&flow.Config{
@@ -956,6 +1111,7 @@ func TestFlow(t *testing.T) {
 				testCase.localStorageMock(),
 				testCase.templateDriverMock(),
 				testCase.scriptDriverMock(),
+				triggers,
 			)
 
 			result, err := flowEngine.Run(ctx, testCase.env)

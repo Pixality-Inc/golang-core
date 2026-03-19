@@ -112,6 +112,21 @@ func (mr *MockScriptDriverMockRecorder) ValueToBool(value any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValueToBool", reflect.TypeOf((*MockScriptDriver)(nil).ValueToBool), value)
 }
 
+// ValueToMapStringAny mocks base method.
+func (m *MockScriptDriver) ValueToMapStringAny(value any) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValueToMapStringAny", value)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ValueToMapStringAny indicates an expected call of ValueToMapStringAny.
+func (mr *MockScriptDriverMockRecorder) ValueToMapStringAny(value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValueToMapStringAny", reflect.TypeOf((*MockScriptDriver)(nil).ValueToMapStringAny), value)
+}
+
 // ValueToMapStringString mocks base method.
 func (m *MockScriptDriver) ValueToMapStringString(value any) (map[string]string, error) {
 	m.ctrl.T.Helper()

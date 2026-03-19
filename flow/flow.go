@@ -13,6 +13,7 @@ import (
 
 	"github.com/pixality-inc/golang-core/cli"
 	"github.com/pixality-inc/golang-core/errors"
+	"github.com/pixality-inc/golang-core/json"
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/storage"
 	"github.com/pixality-inc/golang-core/timetrack"
@@ -22,6 +23,8 @@ import (
 var (
 	ErrActionNoName        = errors.New("flow.action_no_name", "action does not contain an action name")
 	ErrActionDuplicateName = errors.New("flow.action_name_duplicate", "action name is duplicated")
+	ErrTriggerNotFound     = errors.New("flow.trigger_not_found", "trigger not found")
+	ErrTriggerFailed       = errors.New("flow.trigger_failed", "trigger failed")
 )
 
 type Flow interface {
@@ -44,6 +47,7 @@ type Impl struct {
 	storage        storage.Storage
 	templateDriver TemplateDriver
 	scriptDriver   ScriptDriver
+	triggers       map[string]ActionTriggerFunc
 }
 
 func New(
@@ -51,13 +55,19 @@ func New(
 	storage storage.Storage,
 	templateDriver TemplateDriver,
 	scriptDriver ScriptDriver,
+	triggers map[string]ActionTriggerFunc,
 ) *Impl {
+	if triggers == nil {
+		triggers = make(map[string]ActionTriggerFunc)
+	}
+
 	return &Impl{
 		log:            logger.NewLoggableImplWithService("flow"),
 		config:         config,
 		storage:        storage,
 		templateDriver: templateDriver,
 		scriptDriver:   scriptDriver,
+		triggers:       triggers,
 	}
 }
 
@@ -153,11 +163,12 @@ func (f *Impl) Throw(err error) {
 }
 
 func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {
+	hasTrigger := action.Trigger != nil
 	hasCommand := action.Command != ""
 	hasScript := action.Script != ""
 	hasScriptFile := action.ScriptFile != ""
 
-	optionsSum := util.SliceSum([]bool{hasCommand, hasScript, hasScriptFile}, 0, boolInc)
+	optionsSum := util.SliceSum([]bool{hasTrigger, hasCommand, hasScript, hasScriptFile}, 0, boolInc)
 
 	if optionsSum <= 0 {
 		return nil, ErrActionNoOptions
@@ -174,6 +185,9 @@ func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionR
 	}
 
 	switch {
+	case hasTrigger:
+		return f.runActionTrigger(ctx, env, action)
+
 	case hasCommand:
 		return f.runActionCommand(ctx, env, action)
 
@@ -185,6 +199,74 @@ func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionR
 	}
 
 	return nil, util.ErrNotImplemented
+}
+
+//nolint:cyclop
+func (f *Impl) runActionTrigger(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {
+	log := f.log.GetLogger(ctx)
+
+	log.Debugf("Running action '%s' as trigger", action.Name)
+
+	trigger := action.Trigger
+
+	hasData := trigger.Data != nil
+	hasDataScript := trigger.DataScript != ""
+
+	optionsSum := util.SliceSum([]bool{hasData, hasDataScript}, 0, boolInc)
+
+	if optionsSum > 1 {
+		return nil, ErrActionTriggerTooManyOptions
+	}
+
+	triggerFunc, ok := f.triggers[trigger.Name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrTriggerNotFound, trigger.Name)
+	}
+
+	var data map[string]any
+
+	switch {
+	case hasData:
+		data = trigger.Data
+
+	case hasDataScript:
+		dataResult, err := f.evalScript(ctx, env, "action."+action.Name+".trigger.data_script", trigger.DataScript)
+		if err != nil {
+			return nil, fmt.Errorf("eval js trigger data script: %w", err)
+		}
+
+		data, err = f.scriptDriver.ValueToMapStringAny(dataResult)
+		if err != nil {
+			return nil, fmt.Errorf("trigger data jsValue to map[string]any: %w", err)
+		}
+
+	default:
+		data = make(map[string]any)
+	}
+
+	if trigger.Async {
+		// nolint:contextcheck
+		go func() {
+			_, err := triggerFunc(context.Background(), data)
+			if err != nil {
+				log.WithError(err).Errorf("trigger '%s' failed", trigger.Name)
+			}
+		}()
+
+		return NewActionResponse(), nil
+	}
+
+	result, err := triggerFunc(ctx, data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrTriggerFailed, trigger.Name, err)
+	}
+
+	buf, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal trigger result: %w", err)
+	}
+
+	return NewActionResponse().WithResult(string(buf)), nil
 }
 
 //nolint:cyclop

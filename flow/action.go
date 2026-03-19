@@ -2,6 +2,7 @@ package flow
 
 type Action struct {
 	Name              string            `json:"name"                            yaml:"name"`
+	Trigger           *ActionTrigger    `json:"trigger,omitempty"               yaml:"trigger,omitempty"`
 	Command           string            `json:"command,omitempty"               yaml:"command,omitempty"`
 	WorkDir           string            `json:"work_dir,omitempty"              yaml:"work_dir,omitempty"`
 	Env               map[string]string `json:"env,omitempty"                   yaml:"env,omitempty"`
@@ -23,6 +24,12 @@ func NewAction(name string) Action {
 		Name: name,
 		Env:  make(map[string]string),
 	}
+}
+
+func (a Action) WithTrigger(trigger ActionTrigger) Action {
+	a.Trigger = &trigger
+
+	return a
 }
 
 func (a Action) WithCommand(cmd string, args ...string) Action {
