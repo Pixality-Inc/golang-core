@@ -6,6 +6,10 @@ type Env struct {
 }
 
 func NewEnv(workDir string, context map[string]any) *Env {
+	if context == nil {
+		context = make(map[string]any)
+	}
+
 	return &Env{
 		WorkDir: workDir,
 		Context: context,
