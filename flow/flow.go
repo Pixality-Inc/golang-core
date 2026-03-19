@@ -246,7 +246,7 @@ func (f *Impl) runActionTrigger(ctx context.Context, env *Env, action Action) (*
 
 	if trigger.Async {
 		go func() {
-			_, err := triggerFunc(ctx, data)
+			_, err := triggerFunc(context.Background(), data)
 			if err != nil {
 				log.WithError(err).Errorf("trigger '%s' failed", trigger.Name)
 			}
