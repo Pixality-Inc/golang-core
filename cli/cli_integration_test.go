@@ -176,7 +176,8 @@ func TestImpl_Exec_AllOptionsUsed(t *testing.T) {
 
 	tmp := t.TempDir()
 
-	var stdoutBuf, stderrBuf bytes.Buffer
+	stdoutBuffer := bytes.NewBuffer(nil)
+	stderrBuffer := bytes.NewBuffer(nil)
 
 	cliTest := cli.New(log, "/bin/sh")
 
@@ -194,8 +195,8 @@ func TestImpl_Exec_AllOptionsUsed(t *testing.T) {
 			`,
 		},
 		cli.WithWorkDir(tmp),
-		cli.WithStdout(&stdoutBuf),
-		cli.WithStderr(&stderrBuf),
+		cli.WithStdout(stdoutBuffer),
+		cli.WithStderr(stderrBuffer),
 		cli.WithEnv("FOO", "foo-value"),
 		cli.WithEnvs(map[string]string{
 			"BAR": "bar-value",
@@ -207,6 +208,9 @@ func TestImpl_Exec_AllOptionsUsed(t *testing.T) {
 
 	require.Contains(t, string(res.Stdout()), "out")
 	require.Contains(t, string(res.Stderr()), "err")
+
+	require.Contains(t, stdoutBuffer.String(), "out")
+	require.Contains(t, stderrBuffer.String(), "err")
 
 	lines := strings.Split(strings.TrimSpace(string(res.Stdout())), "\n")
 

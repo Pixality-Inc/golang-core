@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	mockFlow "github.com/pixality-inc/golang-core/flow/mocks"
 	"github.com/pixality-inc/golang-core/storage"
 	mockStorage "github.com/pixality-inc/golang-core/storage/mocks"
+	"github.com/pixality-inc/golang-core/util"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -1148,4 +1150,62 @@ func TestFlow(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Flow_Options_LogFiles(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+
+	flowEngine := flow.New(
+		&flow.Config{
+			Actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testEchoCommandToRun, "hello"),
+			},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		flow.WithLogFiles(tempDir, "xxx_"),
+	)
+
+	result, err := flowEngine.Run(context.Background(), nil)
+	require.NoError(t, err)
+
+	// Result
+
+	require.Len(t, result.ActionsResponses, 1)
+
+	testResult, ok := result.ActionsResponses["test"]
+	require.True(t, ok)
+
+	require.Equal(t, 0, testResult.ErrorCode)
+	require.Equal(t, "hello\n", testResult.Stdout)
+	require.Empty(t, testResult.Stderr)
+
+	// Stdout
+
+	stdoutFilename := filepath.Join(tempDir, "xxx_test.stdout.log")
+
+	_, ok = util.FileExists(stdoutFilename)
+	require.True(t, ok)
+
+	buf, err := os.ReadFile(stdoutFilename)
+	require.NoError(t, err)
+
+	require.Equal(t, "hello\n", string(buf))
+
+	// Stderr
+
+	stderrFilename := filepath.Join(tempDir, "xxx_test.stderr.log")
+
+	_, ok = util.FileExists(stderrFilename)
+	require.True(t, ok)
+
+	buf, err = os.ReadFile(stderrFilename)
+	require.NoError(t, err)
+
+	require.Empty(t, buf)
 }

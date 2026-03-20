@@ -1,26 +1,30 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"os/exec"
 	"syscall"
 )
 
 // ExecCommand exitCode, stdout, stderr, error
 func ExecCommand(cmd *exec.Cmd, failIfExitCodeNotZero bool) (int, []byte, []byte, error) {
-	var stdoutBuffer bytes.Buffer
+	stdoutBuffer := bytes.NewBuffer(nil)
 
-	stdoutWriter := bufio.NewWriter(&stdoutBuffer)
+	if cmd.Stdout == nil {
+		cmd.Stdout = stdoutBuffer
+	} else {
+		cmd.Stdout = io.MultiWriter(stdoutBuffer, cmd.Stdout)
+	}
 
-	cmd.Stdout = stdoutWriter
+	stderrBuffer := bytes.NewBuffer(nil)
 
-	var stderrBuffer bytes.Buffer
-
-	stderrWriter := bufio.NewWriter(&stderrBuffer)
-
-	cmd.Stderr = stderrWriter
+	if cmd.Stderr == nil {
+		cmd.Stderr = stderrBuffer
+	} else {
+		cmd.Stderr = io.MultiWriter(cmd.Stderr, stderrBuffer)
+	}
 
 	exitCode := 0
 
