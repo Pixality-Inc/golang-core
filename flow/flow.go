@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -48,6 +47,8 @@ type Impl struct {
 	templateDriver TemplateDriver
 	scriptDriver   ScriptDriver
 	triggers       map[string]ActionTriggerFunc
+	logsDir        *string
+	logFilePrefix  *string
 }
 
 func New(
@@ -56,19 +57,28 @@ func New(
 	templateDriver TemplateDriver,
 	scriptDriver ScriptDriver,
 	triggers map[string]ActionTriggerFunc,
+	options ...Option,
 ) *Impl {
 	if triggers == nil {
 		triggers = make(map[string]ActionTriggerFunc)
 	}
 
-	return &Impl{
+	flowEngine := &Impl{
 		log:            logger.NewLoggableImplWithService("flow"),
 		config:         config,
 		storage:        storage,
 		templateDriver: templateDriver,
 		scriptDriver:   scriptDriver,
 		triggers:       triggers,
+		logsDir:        nil,
+		logFilePrefix:  nil,
 	}
+
+	for _, opt := range options {
+		opt(flowEngine)
+	}
+
+	return flowEngine
 }
 
 func (f *Impl) Validate(_ context.Context) error {
@@ -91,6 +101,13 @@ func (f *Impl) Validate(_ context.Context) error {
 
 func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 	log := f.log.GetLogger(ctx)
+
+	if env == nil {
+		env = &Env{
+			WorkDir: "",
+			Context: make(map[string]any),
+		}
+	}
 
 	result := &Result{
 		ActionsResponses: make(map[string]*ActionResponse, len(f.config.Actions)),
@@ -269,7 +286,7 @@ func (f *Impl) runActionTrigger(ctx context.Context, env *Env, action Action) (*
 	return NewActionResponse().WithResult(string(buf)), nil
 }
 
-//nolint:cyclop
+//nolint:cyclop,gocognit,gocyclo
 func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {
 	log := f.log.GetLogger(ctx)
 
@@ -349,34 +366,76 @@ func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*
 		return nil, fmt.Errorf("get action '%s' environment: %w", action.Name, err)
 	}
 
-	cmd := exec.CommandContext(
-		ctx,
-		command,
-		cmdArgs...,
-	)
+	cliOptions := make([]cli.Option, 0)
 
-	cmd.Dir = workDir
-
-	if cmdEnvs != nil {
-		var envs []string
-
-		for k, v := range cmdEnvs {
-			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
-		}
-
-		cmd.Env = append(os.Environ(), envs...)
+	if workDir != "" {
+		cliOptions = append(cliOptions, cli.WithWorkDir(workDir))
 	}
 
-	log.Debugf("Running command: %s", cmd.String())
+	if len(cmdEnvs) > 0 {
+		cliOptions = append(cliOptions, cli.WithEnvs(cmdEnvs))
+	}
 
-	exitCode, stdout, stderr, err := cli.ExecCommand(cmd, false)
+	if f.logsDir != nil {
+		logsDir := *f.logsDir
+
+		if err = os.MkdirAll(logsDir, os.ModePerm); err != nil {
+			return nil, fmt.Errorf("mkdir %s: %w", logsDir, err)
+		}
+
+		var prefix string
+
+		if f.logFilePrefix != nil {
+			prefix = *f.logFilePrefix
+		}
+
+		// Stdout
+
+		stdoutLogFilename := filepath.Join(logsDir, fmt.Sprintf("%s%s.stdout.log", prefix, action.Name))
+
+		stdoutLogFile, err := os.OpenFile(stdoutLogFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
+		if err != nil {
+			return nil, fmt.Errorf("open stdout log file %s: %w", stdoutLogFilename, err)
+		}
+
+		defer func() {
+			if fErr := stdoutLogFile.Close(); fErr != nil {
+				log.WithError(fErr).Errorf("close stdout log file %s", stdoutLogFilename)
+			}
+		}()
+
+		cliOptions = append(cliOptions, cli.WithStdout(stdoutLogFile))
+
+		// Stderr
+
+		stderrLogFilename := filepath.Join(logsDir, fmt.Sprintf("%s%s.stderr.log", prefix, action.Name))
+
+		stderrLogFile, err := os.OpenFile(stderrLogFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
+		if err != nil {
+			return nil, fmt.Errorf("open stderr log file %s: %w", stderrLogFilename, err)
+		}
+
+		defer func() {
+			if fErr := stderrLogFile.Close(); fErr != nil {
+				log.WithError(fErr).Errorf("close stderr log file %s", stderrLogFilename)
+			}
+		}()
+
+		cliOptions = append(cliOptions, cli.WithStderr(stderrLogFile))
+	}
+
+	cmdResult, err := cli.New(f.log, command).Exec(ctx, cmdArgs, cliOptions...) // nolint:staticcheck
+
+	exitCode := cmdResult.ExitCode()
+	stdout := cmdResult.Stdout()
+	stderr := cmdResult.Stderr()
 
 	response := NewActionResponse().
 		WithExitCode(exitCode).
 		WithStdout(string(stdout)).
 		WithStderr(string(stderr))
 
-	if err != nil {
+	if err != nil && exitCode == -1 {
 		return response, fmt.Errorf("%w: command '%s' for action '%s' failed: %w: %s", ErrCommandFailed, command, action.Name, err, stderr)
 	}
 
