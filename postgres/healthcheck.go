@@ -15,6 +15,10 @@ func NewHealthcheckService(database Database) *HealthcheckService {
 	}
 }
 
+func (h *HealthcheckService) Name() string {
+	return "postgres"
+}
+
 func (h *HealthcheckService) IsOK() bool {
 	if !h.database.IsConnected() {
 		return true

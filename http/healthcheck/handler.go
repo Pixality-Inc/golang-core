@@ -58,8 +58,8 @@ func (h *Handler) performCheck() {
 
 			if h.options.Logger != nil {
 				name := "unknown"
-				if ns, isNamed := svc.(*namedService); isNamed {
-					name = ns.name
+				if ns, isNamed := svc.(NamedService); isNamed {
+					name = ns.Name()
 				}
 
 				h.options.Logger.Errorf("healthcheck failed: %s", name)
