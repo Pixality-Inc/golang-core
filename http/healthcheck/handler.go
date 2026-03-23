@@ -11,8 +11,8 @@ import (
 type Handler struct {
 	mx sync.RWMutex
 
-	options Options
-	service []Service
+	options  Options
+	services []Service
 
 	ok bool
 }
@@ -25,8 +25,8 @@ func NewDefaultHandler(ctx context.Context, reCheckDuration time.Duration, servi
 
 func NewHandler(ctx context.Context, opts Options, services ...Service) *Handler {
 	handler := &Handler{
-		options: opts,
-		service: services,
+		options:  opts,
+		services: services,
 	}
 
 	handler.performCheck()
@@ -52,11 +52,18 @@ func (h *Handler) GetReadiness(ctx *fasthttp.RequestCtx) {
 func (h *Handler) performCheck() {
 	ok := true
 
-	for i := range h.service {
-		ok = ok && h.service[i].IsOK()
+	for _, svc := range h.services {
+		if !svc.IsOK() {
+			ok = false
 
-		if !ok {
-			break
+			if h.options.Logger != nil {
+				name := "unknown"
+				if ns, isNamed := svc.(*namedService); isNamed {
+					name = ns.name
+				}
+
+				h.options.Logger.Errorf("healthcheck failed: %s", name)
+			}
 		}
 	}
 
