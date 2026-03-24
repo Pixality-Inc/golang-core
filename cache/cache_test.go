@@ -34,6 +34,7 @@ type fakeProvider struct {
 	hasFn func(ctx context.Context, group cache.Group, key string) (bool, error)
 	getFn func(ctx context.Context, group cache.Group, key string) ([]byte, error)
 	setFn func(ctx context.Context, group cache.Group, key string, value []byte, ttl time.Duration) error
+	delFn func(ctx context.Context, group cache.Group, key string) error
 }
 
 func (f fakeProvider) Has(ctx context.Context, group cache.Group, key string) (bool, error) {
@@ -46,6 +47,10 @@ func (f fakeProvider) Get(ctx context.Context, group cache.Group, key string) ([
 
 func (f fakeProvider) Set(ctx context.Context, group cache.Group, key string, value []byte, ttl time.Duration) error {
 	return f.setFn(ctx, group, key, value, ttl)
+}
+
+func (f fakeProvider) Delete(ctx context.Context, group cache.Group, key string) error {
+	return f.delFn(ctx, group, key)
 }
 
 func TestCache_Get(t *testing.T) {

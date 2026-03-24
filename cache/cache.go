@@ -16,4 +16,5 @@ type Cache[K Key, V any] interface {
 	Has(ctx context.Context, key K) (bool, error)
 	Get(ctx context.Context, key K) (V, error)
 	Set(ctx context.Context, key K, value V) error
+	Delete(ctx context.Context, key K) error
 }

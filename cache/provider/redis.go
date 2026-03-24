@@ -70,6 +70,18 @@ func (p *Redis) Set(
 	return nil
 }
 
+func (p *Redis) Delete(
+	ctx context.Context,
+	group cache.Group,
+	key string,
+) error {
+	if err := p.client.Del(ctx, p.key(group, key)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *Redis) key(group cache.Group, key string) string {
 	return string(group) + ":" + key
 }
