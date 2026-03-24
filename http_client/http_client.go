@@ -70,20 +70,8 @@ func NewClientImpl(
 		circuitBreaker = NewCircuitBreaker(config.CircuitBreaker(), nil)
 	}
 
-	readTimeout := config.ReadTimeout()
-	if readTimeout == 0 {
-		readTimeout = config.Timeout()
-	}
-
-	writeTimeout := config.WriteTimeout()
-	if writeTimeout == 0 {
-		writeTimeout = config.Timeout()
-	}
-
 	client := &fasthttp.Client{
 		Name:                     config.Name(),
-		ReadTimeout:              readTimeout,
-		WriteTimeout:             writeTimeout,
 		MaxConnsPerHost:          config.MaxConnsPerHost(),
 		MaxIdleConnDuration:      config.MaxIdleConnDuration(),
 		MaxConnWaitTimeout:       config.MaxConnWaitTimeout(),
@@ -94,6 +82,14 @@ func NewClientImpl(
 		NoDefaultUserAgentHeader: false,
 		DisablePathNormalizing:   false,
 		StreamResponseBody:       config.StreamResponseBody(),
+	}
+
+	if readTimeout := config.ReadTimeout(); readTimeout > 0 {
+		client.ReadTimeout = readTimeout
+	}
+
+	if writeTimeout := config.WriteTimeout(); writeTimeout > 0 {
+		client.WriteTimeout = writeTimeout
 	}
 
 	tlsConfig, err := configureTLS(config)

@@ -19,10 +19,24 @@ type Impl struct {
 	httpClient http.Client
 }
 
+const defaultMaxResponseBodySize = 1
+
+type configWithDefaults struct {
+	http.Config
+}
+
+func (c *configWithDefaults) MaxResponseBodySize() int {
+	if v := c.Config.MaxResponseBodySize(); v != 0 {
+		return v
+	}
+
+	return defaultMaxResponseBodySize
+}
+
 func NewDownloader(config http.Config) (Downloader, error) {
 	log := logger.NewLoggableImplWithService("downloader")
 
-	httpClient, err := http.NewClientImpl(log, config)
+	httpClient, err := http.NewClientImpl(log, &configWithDefaults{Config: config})
 	if err != nil {
 		return nil, err
 	}

@@ -60,8 +60,8 @@ type ConfigYaml struct {
 	NameValue                string                      `env:"NAME"                   yaml:"name"`
 	MaxConnsPerHostValue     int                         `env:"MAX_CONNS_PER_HOST"     yaml:"max_conns_per_host"`
 	MaxIdleConnDurationValue time.Duration               `env:"MAX_IDLE_CONN_DURATION" yaml:"max_idle_conn_duration"`
-	ReadTimeoutValue         time.Duration               `env:"READ_TIMEOUT"           yaml:"read_timeout"`
-	WriteTimeoutValue        time.Duration               `env:"WRITE_TIMEOUT"          yaml:"write_timeout"`
+	ReadTimeoutValue         *time.Duration              `env:"READ_TIMEOUT"           yaml:"read_timeout"`
+	WriteTimeoutValue        *time.Duration              `env:"WRITE_TIMEOUT"          yaml:"write_timeout"`
 	MaxConnWaitTimeoutValue  time.Duration               `env:"MAX_CONN_WAIT_TIMEOUT"  yaml:"max_conn_wait_timeout"`
 	RetryPolicyValue         *retry.ConfigYaml           `env-prefix:"RETRY_POLICY"    yaml:"retry_policy"`
 	ReadBufferSizeValue      int                         `env:"READ_BUFFER_SIZE"       yaml:"read_buffer_size"`
@@ -124,19 +124,19 @@ func (c *ConfigYaml) MaxIdleConnDuration() time.Duration {
 }
 
 func (c *ConfigYaml) ReadTimeout() time.Duration {
-	if c.ReadTimeoutValue == 0 {
-		return c.TimeoutValue
+	if c.ReadTimeoutValue == nil {
+		return 0
 	}
 
-	return c.ReadTimeoutValue
+	return *c.ReadTimeoutValue
 }
 
 func (c *ConfigYaml) WriteTimeout() time.Duration {
-	if c.WriteTimeoutValue == 0 {
-		return c.TimeoutValue
+	if c.WriteTimeoutValue == nil {
+		return 0
 	}
 
-	return c.WriteTimeoutValue
+	return *c.WriteTimeoutValue
 }
 
 func (c *ConfigYaml) MaxConnWaitTimeout() time.Duration {
