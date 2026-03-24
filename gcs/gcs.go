@@ -97,17 +97,23 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 
 	objectFullName := c.getObjectFullName(objectName)
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	writer := c.client.Bucket(c.bucketName).Object(objectFullName).NewWriter(ctx)
 
-	defer func() {
-		err := writer.Close()
-		if err != nil {
-			log.WithError(err).Errorf("failed to close writer for '%s'", objectFullName)
-		}
-	}()
-
 	if _, err := io.Copy(writer, file); err != nil {
+		cancel()
+
+		if closeErr := writer.Close(); closeErr != nil {
+			log.WithError(closeErr).Errorf("failed to close writer for '%s'", objectFullName)
+		}
+
 		return err
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer for '%s': %w", objectFullName, err)
 	}
 
 	return nil
