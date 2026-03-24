@@ -42,6 +42,8 @@ type Client interface {
 	Options(ctx context.Context, uri string, opts ...RequestOption) (Response, error)
 
 	Do(ctx context.Context, method, uri string, opts ...RequestOption) (Response, error)
+
+	GetStream(ctx context.Context, uri string, opts ...RequestOption) (StreamResponse, error)
 }
 
 type ClientImpl struct {
@@ -255,6 +257,135 @@ func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...Request
 	}
 
 	return executeRequest()
+}
+
+func (c *ClientImpl) GetStream(ctx context.Context, uri string, opts ...RequestOption) (StreamResponse, error) {
+	cfg := applyOptions(opts...)
+	return c.performStreamRequest(ctx, uri, cfg)
+}
+
+func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *RequestConfig) (StreamResponse, error) {
+	requestTimeTracker := timetrack.New(ctx)
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+
+	resp.StreamBody = true
+
+	url := c.makeUrl(uri)
+	req.SetRequestURI(url)
+	req.Header.SetMethod(fasthttp.MethodGet)
+
+	if err := c.applyRequestConfig(ctx, req, cfg); err != nil {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+		return nil, err
+	}
+
+	var err error
+
+	if c.config.FollowRedirects() {
+		err = c.client.DoRedirects(req, resp, maxRedirectsCount)
+	} else {
+		err = c.client.Do(req, resp)
+	}
+
+	if ctx.Err() != nil {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+		return nil, ctx.Err()
+	}
+
+	if err != nil {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+		return nil, err
+	}
+
+	statusCode := resp.StatusCode()
+
+	if statusCode < 200 || statusCode > 299 {
+		body := make([]byte, len(resp.Body()))
+		copy(body, resp.Body())
+
+		headers := make(Headers)
+		resp.Header.VisitAll(func(key, value []byte) {
+			k := string(key)
+			headers[k] = append(headers[k], string(value))
+		})
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+
+		c.logStreamRequest(ctx, url, statusCode, headers, nil, requestTimeTracker)
+
+		errResp := &ResponseImpl{StatusCode: statusCode, Body: body}
+		_, statusErr := c.handleStatusCode(errResp)
+		return nil, statusErr
+	}
+
+	headers := make(Headers)
+	resp.Header.VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := string(value)
+		headers[k] = append(headers[k], v)
+	})
+
+	c.logStreamRequest(ctx, url, statusCode, headers, nil, requestTimeTracker)
+
+	body := &fasthttpStreamCloser{
+		reader: resp.BodyStream(),
+		req:    req,
+		resp:   resp,
+	}
+
+	return &StreamResponseImpl{
+		StatusCode: statusCode,
+		Headers:    headers,
+		Body:       body,
+	}, nil
+}
+
+func (c *ClientImpl) logStreamRequest(
+	ctx context.Context,
+	url string,
+	statusCode int,
+	headers Headers,
+	err error,
+	tracker *timetrack.TimeTracker,
+) {
+	tracker.Finish()
+
+	log := c.log.GetLogger(ctx)
+
+	fields := map[string]any{
+		"logger":         c.config.Name(),
+		"method":         fasthttp.MethodGet,
+		"url":            url,
+		"success":        err == nil && statusCode >= 200 && statusCode < 300,
+		"execution_time": tracker.Duration().Milliseconds(),
+	}
+
+	if statusCode != 0 {
+		fields["status_code"] = statusCode
+	}
+
+	if headers != nil {
+		if value, ok := headers["Content-Type"]; ok {
+			fields["content_type"] = strings.Join(value, ",")
+		}
+	}
+
+	log = log.WithFields(fields)
+
+	switch {
+	case err != nil:
+		log.WithError(err).Error(url)
+	case statusCode < 200 || statusCode >= 300:
+		log.Warn(url)
+	default:
+		log.Debug(url)
+	}
 }
 
 func (c *ClientImpl) makeUrl(uri string) string {

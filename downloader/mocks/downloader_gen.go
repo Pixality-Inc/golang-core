@@ -11,6 +11,7 @@ package mock_downloader
 
 import (
 	context "context"
+	io "io"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -53,4 +54,19 @@ func (m *MockDownloader) Download(ctx context.Context, url string) ([]byte, erro
 func (mr *MockDownloaderMockRecorder) Download(ctx, url any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Download", reflect.TypeOf((*MockDownloader)(nil).Download), ctx, url)
+}
+
+// DownloadStream mocks base method.
+func (m *MockDownloader) DownloadStream(ctx context.Context, url string) (io.ReadCloser, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DownloadStream", ctx, url)
+	ret0, _ := ret[0].(io.ReadCloser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DownloadStream indicates an expected call of DownloadStream.
+func (mr *MockDownloaderMockRecorder) DownloadStream(ctx, url any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadStream", reflect.TypeOf((*MockDownloader)(nil).DownloadStream), ctx, url)
 }

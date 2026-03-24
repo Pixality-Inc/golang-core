@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"io"
 
 	http "github.com/pixality-inc/golang-core/http_client"
 	"github.com/pixality-inc/golang-core/logger"
@@ -10,6 +11,7 @@ import (
 //go:generate mockgen -destination mocks/downloader_gen.go -source downloader.go
 type Downloader interface {
 	Download(ctx context.Context, url string) ([]byte, error)
+	DownloadStream(ctx context.Context, url string) (io.ReadCloser, error)
 }
 
 type Impl struct {
@@ -37,6 +39,19 @@ func (c *Impl) Download(ctx context.Context, url string) ([]byte, error) {
 	log.Infof("Downloading from '%s'", url)
 
 	response, err := c.httpClient.Get(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.GetBody(), nil
+}
+
+func (c *Impl) DownloadStream(ctx context.Context, url string) (io.ReadCloser, error) {
+	log := c.log.GetLogger(ctx)
+
+	log.Infof("Streaming download from '%s'", url)
+
+	response, err := c.httpClient.GetStream(ctx, url)
 	if err != nil {
 		return nil, err
 	}
