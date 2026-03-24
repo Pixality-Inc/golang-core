@@ -87,6 +87,21 @@ func (p *Memory) Set(
 	return nil
 }
 
+func (p *Memory) Delete(
+	_ context.Context,
+	group cache.Group,
+	key string,
+) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	groupKey := p.key(group, key)
+
+	delete(p.storage, groupKey)
+
+	return nil
+}
+
 func (p *Memory) key(group cache.Group, key string) string {
 	return string(group) + ":" + key
 }

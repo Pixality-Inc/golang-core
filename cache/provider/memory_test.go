@@ -127,3 +127,24 @@ func TestMemory_Get_ExpiredDeletesEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "expired entry must be deleted")
 }
+
+func TestMemory_Delete(t *testing.T) {
+	t.Parallel()
+
+	mem := provider.NewMemory()
+	ctx := context.Background()
+
+	err := mem.Set(ctx, "grp", "key", []byte("value"), time.Second)
+	require.NoError(t, err)
+
+	value, err := mem.Get(ctx, "grp", "key")
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+
+	err = mem.Delete(ctx, "grp", "key")
+	require.NoError(t, err)
+
+	value2, err := mem.Get(ctx, "grp", "key")
+	require.ErrorIs(t, err, cache.ErrProviderNoSuchKey)
+	require.Nil(t, value2)
+}

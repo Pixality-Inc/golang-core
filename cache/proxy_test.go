@@ -23,6 +23,7 @@ type (
 		hasFn    func(context.Context, K) (bool, error)
 		getFn    func(context.Context, K) (V, error)
 		setFn    func(context.Context, K, V) error
+		delFn    func(context.Context, K) error
 		defaultV V
 		group    cache.Group
 	}
@@ -38,6 +39,10 @@ func (f *fakeCache[K, V]) Get(ctx context.Context, key K) (V, error) {
 
 func (f *fakeCache[K, V]) Set(ctx context.Context, key K, value V) error {
 	return f.setFn(ctx, key, value)
+}
+
+func (f *fakeCache[K, V]) Delete(ctx context.Context, key K) error {
+	return f.delFn(ctx, key)
 }
 
 func (f *fakeCache[K, V]) Default() V {

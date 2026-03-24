@@ -72,3 +72,11 @@ func (c *Impl[K, V]) Set(ctx context.Context, key K, value V) error {
 
 	return nil
 }
+
+func (c *Impl[K, V]) Delete(ctx context.Context, key K) error {
+	if err := c.provider.Delete(ctx, c.group, key.String()); err != nil {
+		return errors.Join(ErrProviderDelete, err)
+	}
+
+	return nil
+}
