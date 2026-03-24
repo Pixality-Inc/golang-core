@@ -29,9 +29,7 @@ func ReadFromChannelWithTimeout[T any](ctx context.Context, ch <-chan T, timeout
 func ReadFromChannel[T any](ctx context.Context, ch <-chan T, defaultValue T) (T, error) {
 	select {
 	case <-ctx.Done():
-		err := ctx.Err()
-
-		return defaultValue, errors.Join(ErrContext, err)
+		return defaultValue, errors.Join(ErrContext, ctx.Err())
 
 	case v, ok := <-ch:
 		if !ok {
