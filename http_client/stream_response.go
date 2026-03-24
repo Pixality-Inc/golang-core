@@ -40,5 +40,6 @@ func (s *fasthttpStreamCloser) Close() error {
 		fasthttp.ReleaseRequest(s.req)
 		fasthttp.ReleaseResponse(s.resp)
 	})
+
 	return nil
 }

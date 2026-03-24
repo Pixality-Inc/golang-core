@@ -104,7 +104,11 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 
 	if _, err := io.Copy(writer, file); err != nil {
 		cancel()
-		_ = writer.Close()
+
+		if closeErr := writer.Close(); closeErr != nil {
+			log.WithError(closeErr).Errorf("failed to close writer for '%s'", objectFullName)
+		}
+
 		return err
 	}
 

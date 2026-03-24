@@ -261,6 +261,7 @@ func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...Request
 
 func (c *ClientImpl) GetStream(ctx context.Context, uri string, opts ...RequestOption) (StreamResponse, error) {
 	cfg := applyOptions(opts...)
+
 	return c.performStreamRequest(ctx, uri, cfg)
 }
 
@@ -279,6 +280,7 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 	if err := c.applyRequestConfig(ctx, req, cfg); err != nil {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
+
 		return nil, err
 	}
 
@@ -293,12 +295,14 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 	if ctx.Err() != nil {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
+
 		return nil, ctx.Err()
 	}
 
 	if err != nil {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
+
 		return nil, err
 	}
 
@@ -309,10 +313,11 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 		copy(body, resp.Body())
 
 		headers := make(Headers)
-		resp.Header.VisitAll(func(key, value []byte) {
+
+		for key, value := range resp.Header.All() {
 			k := string(key)
 			headers[k] = append(headers[k], string(value))
-		})
+		}
 
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
@@ -321,15 +326,16 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 
 		errResp := &ResponseImpl{StatusCode: statusCode, Body: body}
 		_, statusErr := c.handleStatusCode(errResp)
+
 		return nil, statusErr
 	}
 
 	headers := make(Headers)
-	resp.Header.VisitAll(func(key, value []byte) {
+
+	for key, value := range resp.Header.All() {
 		k := string(key)
-		v := string(value)
-		headers[k] = append(headers[k], v)
-	})
+		headers[k] = append(headers[k], string(value))
+	}
 
 	c.logStreamRequest(ctx, url, statusCode, headers, nil, requestTimeTracker)
 
@@ -362,6 +368,7 @@ func (c *ClientImpl) logStreamRequest(
 		"logger":         c.config.Name(),
 		"method":         fasthttp.MethodGet,
 		"url":            url,
+		"stream":         true,
 		"success":        err == nil && statusCode >= 200 && statusCode < 300,
 		"execution_time": tracker.Duration().Milliseconds(),
 	}

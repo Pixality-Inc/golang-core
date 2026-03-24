@@ -157,7 +157,9 @@ func TestClientImpl_GetStream_BodyCloseDoesNotPanic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read and close — should not panic
-	_, _ = io.ReadAll(resp.GetBody())
+	_, err = io.ReadAll(resp.GetBody())
+	require.NoError(t, err)
+
 	require.NotPanics(t, func() {
 		_ = resp.GetBody().Close()
 	})
