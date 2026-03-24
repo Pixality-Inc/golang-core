@@ -25,7 +25,7 @@ func TestDownloader_Download_Integration(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := &http_client.ConfigYaml{TimeoutValue: 5 * time.Second}
+	cfg := &http_client.ConfigYaml{TimeoutValue: 5 * time.Second, MaxResponseBodySizeValue: 4 * 1024 * 1024}
 
 	testDownloader, err := downloader.NewDownloader(cfg)
 	require.NoError(t, err)
