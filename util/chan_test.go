@@ -57,6 +57,20 @@ func Test_ReadFromChannelWithTimeout(t *testing.T) {
 	require.Equal(t, 1, result)
 }
 
+func Test_ReadFromChannelWithTimeout_Cancel(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ch := make(chan int, 1)
+
+	cancel()
+
+	result, err := ReadFromChannelWithTimeout(ctx, ch, 100*time.Millisecond, 0)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, result)
+}
+
 func Test_ReadFromChannelWithTimeout_Timeout(t *testing.T) {
 	t.Parallel()
 
