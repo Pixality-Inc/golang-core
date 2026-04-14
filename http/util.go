@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrNoHeader          = errors.New("no header")
-	ErrHeaderIsMalformed = errors.New("header is malformed")
+	ErrNoHeader            = errors.New("no header")
+	ErrHeaderIsMalformed   = errors.New("header is malformed")
+	ErrUnknownValueForBool = errors.New("unknown value for bool")
 )
 
 func GetAuthorizationBearerToken(ctx *fasthttp.RequestCtx, optional bool) (string, error) {
@@ -46,6 +47,17 @@ func GetAuthorizationBearerToken(ctx *fasthttp.RequestCtx, optional bool) (strin
 
 func ParseUint64(value string) (uint64, error) {
 	return strconv.ParseUint(value, 10, 64)
+}
+
+func ParseBool(value string) (bool, error) {
+	switch strings.ToLower(value) {
+	case "true", "1", "yes":
+		return true, nil
+	case "false", "0", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: %s", ErrUnknownValueForBool, value)
+	}
 }
 
 func ParseUUID(value string) (uuid.UUID, error) {

@@ -202,6 +202,8 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 					switch param.Type {
 					case "string":
 						typeStr = "string"
+					case "bool":
+						typeStr = "bool"
 					default:
 						return fmt.Errorf("%w: '%s' for '%s' in '%s'", errUnknownParameterType, param.Type, paramName, method.Operation.Id)
 					}
@@ -510,6 +512,10 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
       }
 `, modelParamName, modelParamName))...)
 								}
+							case "bool":
+								routerGen = append(routerGen, []byte(`      paramValue, err := http.ParseBool(param)
+`)...)
+								routerGen = append(routerGen, checkErrAndSetValue...)
 							default:
 								return fmt.Errorf("%w: '%s' type '%s' in '%s'", errUnknownParameterType, paramName, param.Type, method.Operation.Id)
 							}
