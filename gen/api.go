@@ -513,24 +513,28 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 	}
 
 	enumProperty := func(enumValues []ApiEnumValueEntry, extras PropertyExtras) *openapi3.SchemaRef {
-		var values []*openapi3.SchemaRef
+		enumAny := make([]any, 0, len(enumValues))
+		enumVarNames := make([]string, 0, len(enumValues))
+		enumDescriptionParts := make([]string, 0, len(enumValues))
 
+		// Represent proto enums as a real OpenAPI enum (not OneOf), so downstream
+		// generators (e.g. openapi-typescript) can emit a clean numeric union.
 		for _, enumValueEntry := range enumValues {
-			enumKey := enumValueEntry.Name
-			enumValue := enumValueEntry.Value
-			title := enumKey + " = " + strconv.Itoa(enumValue)
-
-			values = append(values, &openapi3.SchemaRef{
-				Value: &openapi3.Schema{
-					Default: enumValue,
-					Title:   title,
-				},
-			})
+			enumVarNames = append(enumVarNames, enumValueEntry.Name)
+			enumAny = append(enumAny, enumValueEntry.Value)
+			enumDescriptionParts = append(enumDescriptionParts, enumValueEntry.Name+" = "+strconv.Itoa(enumValueEntry.Value))
 		}
 
 		schema := &openapi3.Schema{
-			Type:  &openapi3.Types{openapi3.TypeNumber},
-			OneOf: values,
+			Type:        &openapi3.Types{openapi3.TypeInteger},
+			Format:      "int32",
+			Enum:        enumAny,
+			Description: strings.Join(enumDescriptionParts, "\n"),
+			Extensions: map[string]any{
+				// Common extension used by generators to preserve names.
+				// openapi-typescript will still produce a usable union even without this.
+				"x-enum-varnames": enumVarNames,
+			},
 		}
 
 		applyExtras(schema, extras)
@@ -786,16 +790,32 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				})
 			}
 
-			objectProperties[oneOfName] = &openapi3.SchemaRef{
-				Value: &openapi3.Schema{
-					OneOf: schemaRefs,
-				},
+			// If the message is "just a oneof" (no other properties), represent it as
+			// a top-level oneOf union of objects like {system_message: {...}}.
+			// This matches how such messages are typically encoded in JSON at runtime
+			// (no extra wrapper property with the oneof name).
+			if len(objectProperties) == 0 && len(requiredProperties) == 0 && len(oneOfs) == 1 {
+				schemas[modelName] = &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						OneOf: schemaRefs,
+					},
+				}
+			} else {
+				objectProperties[oneOfName] = &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						OneOf: schemaRefs,
+					},
+				}
 			}
 		}
 
 		extras := PropertyExtras{}
 
-		schemas[modelName] = objectProperty(modelName, objectProperties, requiredProperties, extras)
+		// If we already emitted a top-level oneOf schema (see oneof handling above),
+		// don't overwrite it with an object wrapper.
+		if _, alreadySet := schemas[modelName]; !alreadySet {
+			schemas[modelName] = objectProperty(modelName, objectProperties, requiredProperties, extras)
+		}
 
 		return nil
 	}
