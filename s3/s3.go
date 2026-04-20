@@ -370,12 +370,6 @@ type composeSource struct {
 	size     int64
 }
 
-type composePart struct {
-	isCopy         bool
-	sourceFullName string
-	localPath      string
-}
-
 func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) error {
 	log := c.log.GetLogger(ctx)
 
@@ -424,96 +418,7 @@ func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) 
 		}
 	}
 
-	// Case B: last chunk is fine — straight multipart with only copy parts
-	last := sources[len(sources)-1]
-	if last.size >= MinPartSize {
-		return c.composeMultipart(ctx, targetFullName, sources, "")
-	}
-
-	// Case C: merge tail
-	tailPath, err := c.mergeTail(ctx, sources[len(sources)-2], last)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if removeErr := os.Remove(tailPath); removeErr != nil {
-			log.WithError(removeErr).Errorf("failed to remove tail temp '%s'", tailPath)
-		}
-	}()
-
-	// Case C.2: only two sources -> single tail file becomes the whole object
-	if len(sources) == 2 {
-		file, err := os.Open(tailPath)
-		if err != nil {
-			return fmt.Errorf("s3: reopen tail: %w", err)
-		}
-
-		defer func() {
-			if closeErr := file.Close(); closeErr != nil {
-				log.WithError(closeErr).Errorf("failed to close tail '%s'", tailPath)
-			}
-		}()
-
-		//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
-		_, err = c.uploader.Upload(ctx, &awss3.PutObjectInput{
-			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(targetFullName),
-			Body:   file,
-		})
-		if err != nil {
-			return fmt.Errorf("s3: upload merged tail as object '%s': %w", targetFullName, err)
-		}
-
-		return nil
-	}
-
-	// Case C: multipart with copy parts for [0..len-3] + uploaded tail
-	return c.composeMultipart(ctx, targetFullName, sources[:len(sources)-2], tailPath)
-}
-
-func (c *Impl) mergeTail(ctx context.Context, prev, last composeSource) (string, error) {
-	tmp, err := os.CreateTemp("", "s3-compose-tail-*")
-	if err != nil {
-		return "", fmt.Errorf("s3: create tail temp: %w", err)
-	}
-
-	cleanup := true
-
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmp.Name())
-		}
-	}()
-
-	for _, src := range []composeSource{prev, last} {
-		out, err := c.client.GetObject(ctx, &awss3.GetObjectInput{
-			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(src.fullName),
-		})
-		if err != nil {
-			_ = tmp.Close()
-
-			return "", fmt.Errorf("s3: get tail source '%s': %w", src.fullName, err)
-		}
-
-		if _, err := io.Copy(tmp, out.Body); err != nil {
-			_ = out.Body.Close()
-			_ = tmp.Close()
-
-			return "", fmt.Errorf("s3: copy tail source '%s': %w", src.fullName, err)
-		}
-
-		_ = out.Body.Close()
-	}
-
-	if err := tmp.Close(); err != nil {
-		return "", fmt.Errorf("s3: close tail temp: %w", err)
-	}
-
-	cleanup = false
-
-	return tmp.Name(), nil
+	return c.composeMultipart(ctx, targetFullName, sources)
 }
 
 func (c *Impl) copyObject(ctx context.Context, sourceFullName, targetFullName string) error {
@@ -531,22 +436,8 @@ func (c *Impl) copyObject(ctx context.Context, sourceFullName, targetFullName st
 	return nil
 }
 
-func (c *Impl) composeMultipart(
-	ctx context.Context,
-	targetFullName string,
-	copySources []composeSource,
-	tailPath string,
-) error {
+func (c *Impl) composeMultipart(ctx context.Context, targetFullName string, sources []composeSource) error {
 	log := c.log.GetLogger(ctx)
-
-	parts := make([]composePart, 0, len(copySources)+1)
-	for _, src := range copySources {
-		parts = append(parts, composePart{isCopy: true, sourceFullName: src.fullName})
-	}
-
-	if tailPath != "" {
-		parts = append(parts, composePart{isCopy: false, localPath: tailPath})
-	}
 
 	mpu, err := c.client.CreateMultipartUpload(ctx, &awss3.CreateMultipartUploadInput{
 		Bucket: aws.String(c.bucketName),
@@ -578,12 +469,12 @@ func (c *Impl) composeMultipart(
 		}
 	}()
 
-	completed := make([]types.CompletedPart, 0, len(parts))
+	completed := make([]types.CompletedPart, 0, len(sources))
 
-	for i, part := range parts {
+	for i, src := range sources {
 		partNum := int32(i + 1) //nolint:gosec // S3 caps parts at 10000; int→int32 safe.
 
-		etag, err := c.uploadComposePart(ctx, targetFullName, uploadId, partNum, part)
+		etag, err := c.uploadCopyPart(ctx, targetFullName, uploadId, partNum, src.fullName)
 		if err != nil {
 			return err
 		}
@@ -609,53 +500,27 @@ func (c *Impl) composeMultipart(
 	return nil
 }
 
-func (c *Impl) uploadComposePart(
+func (c *Impl) uploadCopyPart(
 	ctx context.Context,
 	targetFullName string,
 	uploadId *string,
 	partNum int32,
-	part composePart,
+	sourceFullName string,
 ) (*string, error) {
-	if part.isCopy {
-		copySource := buildCopySource(c.bucketName, part.sourceFullName)
+	copySource := buildCopySource(c.bucketName, sourceFullName)
 
-		out, err := c.client.UploadPartCopy(ctx, &awss3.UploadPartCopyInput{
-			Bucket:     aws.String(c.bucketName),
-			Key:        aws.String(targetFullName),
-			UploadId:   uploadId,
-			PartNumber: aws.Int32(partNum),
-			CopySource: aws.String(copySource),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("s3: upload-part-copy %d for '%s': %w", partNum, targetFullName, err)
-		}
-
-		return out.CopyPartResult.ETag, nil
-	}
-
-	body, err := os.Open(part.localPath)
-	if err != nil {
-		return nil, fmt.Errorf("s3: open tail file: %w", err)
-	}
-
-	defer func() {
-		if closeErr := body.Close(); closeErr != nil {
-			c.log.GetLogger(ctx).WithError(closeErr).Errorf("failed to close tail body '%s'", part.localPath)
-		}
-	}()
-
-	out, err := c.client.UploadPart(ctx, &awss3.UploadPartInput{
+	out, err := c.client.UploadPartCopy(ctx, &awss3.UploadPartCopyInput{
 		Bucket:     aws.String(c.bucketName),
 		Key:        aws.String(targetFullName),
 		UploadId:   uploadId,
 		PartNumber: aws.Int32(partNum),
-		Body:       body,
+		CopySource: aws.String(copySource),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("s3: upload-part %d for '%s': %w", partNum, targetFullName, err)
+		return nil, fmt.Errorf("s3: upload-part-copy %d for '%s': %w", partNum, targetFullName, err)
 	}
 
-	return out.ETag, nil
+	return out.CopyPartResult.ETag, nil
 }
 
 func (c *Impl) init(ctx context.Context) error {
