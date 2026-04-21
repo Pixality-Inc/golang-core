@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/pixality-inc/golang-core/storage"
 
 	"github.com/pixality-inc/golang-core/logger"
 )
@@ -143,13 +144,30 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
-	_, err := c.uploader.Upload(ctx, &awss3.PutObjectInput{
+	metadata, err := storage.GetFileMetadataByName(objectFullName)
+	if err != nil {
+		return fmt.Errorf("failed to get metadata for %q: %w", objectFullName, err)
+	}
+
+	object := &awss3.PutObjectInput{
 		Bucket: aws.String(c.bucketName),
 		Key:    aws.String(objectFullName),
 		Body:   file,
-	})
-	if err != nil {
+	}
+
+	contentType := metadata.ContentType()
+	contentEncoding := metadata.ContentEncoding()
+
+	if contentType != "" {
+		object.ContentType = &contentType
+	}
+
+	if contentEncoding != "" {
+		object.ContentEncoding = &contentEncoding
+	}
+
+	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
+	if _, err = c.uploader.Upload(ctx, object); err != nil {
 		return fmt.Errorf("s3: upload '%s': %w", objectFullName, err)
 	}
 
