@@ -9,8 +9,9 @@ import (
 	"sync"
 
 	"github.com/pixality-inc/golang-core/logger"
+	storage "github.com/pixality-inc/golang-core/storage"
 
-	"cloud.google.com/go/storage"
+	gcs "cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -30,7 +31,7 @@ type Client interface {
 
 	DownloadFile(ctx context.Context, objectName string, filename string) error
 
-	FileExists(ctx context.Context, objectName string) (*storage.ObjectAttrs, bool, error)
+	FileExists(ctx context.Context, objectName string) (*gcs.ObjectAttrs, bool, error)
 
 	Compose(ctx context.Context, objectName string, chunks []string) error
 
@@ -44,7 +45,7 @@ type Impl struct {
 	bucketName          string
 	baseDir             string
 	basePublicUrl       string
-	client              *storage.Client
+	client              *gcs.Client
 	mutex               sync.Mutex
 }
 
@@ -102,6 +103,22 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 
 	writer := c.client.Bucket(c.bucketName).Object(objectFullName).NewWriter(ctx)
 
+	metadata, err := storage.GetFileMetadataByName(objectFullName)
+	if err != nil {
+		return fmt.Errorf("failed to get metadata for %q: %w", objectFullName, err)
+	}
+
+	contentType := metadata.ContentType()
+	contentEncoding := metadata.ContentEncoding()
+
+	if contentType != "" {
+		writer.ContentType = contentType
+	}
+
+	if contentEncoding != "" {
+		writer.ContentEncoding = contentEncoding
+	}
+
 	if _, err := io.Copy(writer, file); err != nil {
 		cancel()
 
@@ -149,7 +166,7 @@ func (c *Impl) DeleteDir(ctx context.Context, objectName string) error {
 
 	bucket := c.client.Bucket(c.bucketName)
 
-	it := bucket.Objects(ctx, &storage.Query{Prefix: objectFullName})
+	it := bucket.Objects(ctx, &gcs.Query{Prefix: objectFullName})
 
 	for {
 		attrs, err := it.Next()
@@ -237,7 +254,7 @@ func (c *Impl) DownloadFile(ctx context.Context, objectName string, filename str
 	return nil
 }
 
-func (c *Impl) FileExists(ctx context.Context, objectName string) (*storage.ObjectAttrs, bool, error) {
+func (c *Impl) FileExists(ctx context.Context, objectName string) (*gcs.ObjectAttrs, bool, error) {
 	if err := c.init(ctx); err != nil {
 		return nil, false, err
 	}
@@ -245,7 +262,7 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (*storage.Obje
 	objectFullName := c.getObjectFullName(objectName)
 
 	attrs, err := c.client.Bucket(c.bucketName).Object(objectFullName).Attrs(ctx)
-	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
+	if err != nil && errors.Is(err, gcs.ErrObjectNotExist) {
 		return nil, false, nil
 	} else if err != nil {
 		return nil, false, err
@@ -265,7 +282,7 @@ func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	chunkObjects := make([]*storage.ObjectHandle, len(chunks))
+	chunkObjects := make([]*gcs.ObjectHandle, len(chunks))
 
 	for n, chunk := range chunks {
 		chunkObjectFullName := c.getObjectFullName(chunk)
@@ -300,7 +317,7 @@ func (c *Impl) init(ctx context.Context) error {
 		return nil
 	}
 
-	client, err := storage.NewClient(ctx, option.WithCredentialsFile(c.credentialsFilename))
+	client, err := gcs.NewClient(ctx, option.WithCredentialsFile(c.credentialsFilename))
 	if err != nil {
 		return err
 	}
