@@ -901,9 +901,19 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				paramName := paramEntry.Name
 				param := paramEntry.Parameter
 
+				var schemaType string
+				switch param.Type {
+				case "string":
+					schemaType = openapi3.TypeString
+				case "bool":
+					schemaType = openapi3.TypeBoolean
+				default:
+					return fmt.Errorf("%w: '%s' for '%s' in '%s'", errUnknownParameterType, param.Type, paramName, operation.Id)
+				}
+
 				schema := &openapi3.SchemaRef{
 					Value: &openapi3.Schema{
-						Type:   &openapi3.Types{param.Type},
+						Type:   &openapi3.Types{schemaType},
 						Format: param.Format,
 					},
 				}
