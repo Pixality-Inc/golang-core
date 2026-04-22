@@ -907,6 +907,10 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 					schemaType = openapi3.TypeString
 				case "bool":
 					schemaType = openapi3.TypeBoolean
+				case "integer", "uint64":
+					schemaType = openapi3.TypeInteger
+				case "number", "float":
+					schemaType = openapi3.TypeNumber
 				default:
 					return fmt.Errorf("%w: '%s' for '%s' in '%s'", errUnknownParameterType, param.Type, paramName, operation.Id)
 				}
