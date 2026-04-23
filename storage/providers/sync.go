@@ -1,10 +1,12 @@
 package providers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/pixality-inc/golang-core/storage"
 )
@@ -22,18 +24,22 @@ func NewSync(storages ...storage.Storage) *SyncImpl {
 }
 
 func (s *SyncImpl) FileExists(ctx context.Context, path string) (bool, error) {
-	existsEverywhere := true
-
-	for _, entry := range s.storages {
-		result, err := entry.FileExists(ctx, path)
-		if err == nil {
-			return result, nil
-		}
-
-		existsEverywhere = existsEverywhere && result
+	if len(s.storages) == 0 {
+		return false, fmt.Errorf("%w: no storages configured", ErrStorageFailed)
 	}
 
-	return existsEverywhere, nil
+	for _, entry := range s.storages {
+		ok, err := entry.FileExists(ctx, path)
+		if err != nil {
+			return false, fmt.Errorf("%w: failed to check file %s: %w", ErrStorageFailed, path, err)
+		}
+
+		if !ok {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (s *SyncImpl) DeleteFile(ctx context.Context, path string) error {
@@ -57,8 +63,13 @@ func (s *SyncImpl) DeleteDir(ctx context.Context, path string) error {
 }
 
 func (s *SyncImpl) Write(ctx context.Context, path string, file io.Reader) error {
+	body, err := io.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("%w: failed to read source for %s: %w", ErrStorageFailed, path, err)
+	}
+
 	for _, entry := range s.storages {
-		if err := entry.Write(ctx, path, file); err != nil {
+		if err := entry.Write(ctx, path, bytes.NewReader(body)); err != nil {
 			return fmt.Errorf("%w: failed to write file %s: %w", ErrStorageFailed, path, err)
 		}
 	}
@@ -77,15 +88,30 @@ func (s *SyncImpl) ReadFile(ctx context.Context, path string) (io.ReadCloser, er
 }
 
 func (s *SyncImpl) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
-	for _, entry := range s.storages {
-		if entries, err := entry.ReadDir(ctx, path); err != nil {
+	if len(s.storages) == 0 {
+		return nil, fmt.Errorf("%w: failed to read directory %s", ErrStorageFailed, path)
+	}
+
+	var first []storage.DirEntry
+
+	for i, entry := range s.storages {
+		entries, err := entry.ReadDir(ctx, path)
+		if err != nil {
 			return nil, fmt.Errorf("%w: failed to read directory %s: %w", ErrStorageFailed, path, err)
-		} else {
-			return entries, nil
+		}
+
+		if i == 0 {
+			first = entries
+
+			continue
+		}
+
+		if !dirEntriesMatch(first, entries) {
+			return nil, fmt.Errorf("%w: directory %s listing mismatch between storages", ErrStorageFailed, path)
 		}
 	}
 
-	return nil, fmt.Errorf("%w: failed to read directory %s", ErrStorageFailed, path)
+	return first, nil
 }
 
 func (s *SyncImpl) MkDir(ctx context.Context, path string) error {
@@ -116,4 +142,25 @@ func (s *SyncImpl) Close() error {
 	}
 
 	return nil
+}
+
+func dirEntriesMatch(aEntries []storage.DirEntry, bEntries []storage.DirEntry) bool {
+	if len(aEntries) != len(bEntries) {
+		return false
+	}
+
+	namesA := make([]string, len(aEntries))
+	for i, e := range aEntries {
+		namesA[i] = e.Name()
+	}
+
+	namesB := make([]string, len(bEntries))
+	for i, e := range bEntries {
+		namesB[i] = e.Name()
+	}
+
+	slices.Sort(namesA)
+	slices.Sort(namesB)
+
+	return slices.Equal(namesA, namesB)
 }
