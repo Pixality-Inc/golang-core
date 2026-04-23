@@ -20,7 +20,7 @@ import (
 	"github.com/gobeam/stringy"
 	"github.com/gogo/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"gopkg.in/yaml.v3"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 var (
@@ -763,7 +763,14 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 			}
 		}
 
-		for oneOfName, oneOfFields := range oneOfs {
+		oneOfNames := make([]string, 0, len(oneOfs))
+		for oneOfName := range oneOfs {
+			oneOfNames = append(oneOfNames, oneOfName)
+		}
+		sort.Strings(oneOfNames)
+
+		for _, oneOfName := range oneOfNames {
+			oneOfFields := oneOfs[oneOfName]
 			schemaFields := make(map[string]*openapi3.SchemaRef, len(oneOfFields))
 
 			for _, oneOfField := range oneOfFields {
@@ -777,7 +784,14 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 
 			schemaRefs := make([]*openapi3.SchemaRef, 0, len(schemaFields))
 
-			for fieldName, property := range schemaFields {
+			fieldNames := make([]string, 0, len(schemaFields))
+			for fieldName := range schemaFields {
+				fieldNames = append(fieldNames, fieldName)
+			}
+			sort.Strings(fieldNames)
+
+			for _, fieldName := range fieldNames {
+				property := schemaFields[fieldName]
 				schemaRefs = append(schemaRefs, &openapi3.SchemaRef{
 					Value: &openapi3.Schema{
 						Type:        &openapi3.Types{openapi3.TypeObject},
@@ -1087,7 +1101,9 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 
 	// Swagger.yaml
 
-	specBuf, err := yaml.Marshal(spec)
+	// Marshal via JSON->YAML to keep map key order stable
+	// (encoding/json sorts map keys, gopkg.in/yaml.v3 does not guarantee that).
+	specBuf, err := sigsyaml.Marshal(spec)
 	if err != nil {
 		return err
 	}
