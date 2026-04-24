@@ -70,6 +70,8 @@ type Client interface {
 
 	FileExists(ctx context.Context, objectName string) (bool, error)
 
+	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
+
 	Compose(ctx context.Context, objectName string, chunks []string) error
 
 	GetPublicUrl(ctx context.Context, objectName string) (string, error)

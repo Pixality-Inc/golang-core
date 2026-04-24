@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/pixality-inc/golang-core/storage"
-	"github.com/pixality-inc/golang-core/util"
 )
 
 type StorageProvider struct {
@@ -40,8 +39,8 @@ func (p *StorageProvider) ReadFile(ctx context.Context, path string) (io.ReadClo
 	return p.gcs.Download(ctx, path)
 }
 
-func (p *StorageProvider) ReadDir(_ context.Context, path string) ([]storage.DirEntry, error) {
-	return nil, util.ErrNotImplemented
+func (p *StorageProvider) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
+	return p.gcs.ReadDir(ctx, path)
 }
 
 func (p *StorageProvider) MkDir(ctx context.Context, path string) error {
