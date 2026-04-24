@@ -10,7 +10,11 @@ import (
 
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/storage"
-	"github.com/pixality-inc/golang-core/util"
+)
+
+var (
+	ErrNoChunksProvided = errors.New("no chunks provided")
+	ErrChunkProcess     = errors.New("chunk process")
 )
 
 type OsProvider struct {
@@ -121,21 +125,84 @@ func (p *OsProvider) MkDir(_ context.Context, path string) error {
 	return nil
 }
 
-func (p *OsProvider) Compose(_ context.Context, path string, chunks []string) error {
-	if len(chunks) == 1 {
-		destPath := p.getFullPath(path)
+func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) error {
+	log := logger.GetLogger(ctx)
 
-		destDir := filepath.Dir(destPath)
-		if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
-			return fmt.Errorf("create dir %s for file %s: %w", destDir, path, err)
+	if len(chunks) == 0 {
+		return ErrNoChunksProvided
+	}
+
+	destPath := p.getFullPath(path)
+
+	destDir := filepath.Dir(destPath)
+
+	if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
+		return fmt.Errorf("create dir %s for file %s: %w", destDir, path, err)
+	}
+
+	if len(chunks) == 1 {
+		return os.Rename(p.getFullPath(chunks[0]), destPath)
+	}
+
+	tmpFile, err := os.CreateTemp(destDir, ".compose-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+
+	tmpName := tmpFile.Name()
+
+	defer func() {
+		if rmErr := os.Remove(tmpName); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.WithError(rmErr).Errorf("failed to remove temp file '%s'", tmpName)
+		}
+	}()
+
+	copyChunkToTemp := func(chunkPath string) error {
+		sourcePath := p.getFullPath(chunkPath)
+
+		chunkFile, err := os.Open(sourcePath)
+		if err != nil {
+			return fmt.Errorf("open chunk: %w", err)
 		}
 
-		sourcePath := p.getFullPath(chunks[0])
+		defer func() {
+			if fErr := chunkFile.Close(); fErr != nil {
+				log.WithError(fErr).Errorf("failed to close chunk source: %s", sourcePath)
+			}
+		}()
 
-		return util.CopyFile(sourcePath, destPath)
-	} else {
-		return util.ErrNotImplemented
+		if _, err = io.Copy(tmpFile, chunkFile); err != nil {
+			return fmt.Errorf("copy chunk: %w", err)
+		}
+
+		return nil
 	}
+
+	for _, chunkPath := range chunks {
+		if err = copyChunkToTemp(chunkPath); err != nil {
+			return fmt.Errorf("%w: %s: %w", ErrChunkProcess, chunkPath, err)
+		}
+	}
+
+	if err = tmpFile.Sync(); err != nil {
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err = os.Rename(tmpName, destPath); err != nil {
+		return fmt.Errorf("rename temp file to destination: %w", err)
+	}
+
+	for _, chunkPath := range chunks {
+		if rmErr := os.Remove(p.getFullPath(chunkPath)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.WithError(rmErr).Errorf("failed to remove chunk '%s' after compose", chunkPath)
+		}
+	}
+
+	return nil
 }
 
 func (p *OsProvider) Close() error {
