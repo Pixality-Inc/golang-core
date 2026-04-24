@@ -65,10 +65,7 @@ func dirEntriesFromPage(commonPrefixes []types.CommonPrefix, contents []types.Ob
 			continue
 		}
 
-		entries = append(entries, &dirEntry{
-			name:  name,
-			isDir: true,
-		})
+		entries = append(entries, storage.NewDirEntry(name))
 	}
 
 	for _, obj := range contents {
@@ -87,11 +84,7 @@ func dirEntriesFromPage(commonPrefixes []types.CommonPrefix, contents []types.Ob
 			continue
 		}
 
-		entries = append(entries, &dirEntry{
-			name:    name,
-			size:    aws.ToInt64(obj.Size),
-			modTime: aws.ToTime(obj.LastModified),
-		})
+		entries = append(entries, storage.NewFileEntry(name, aws.ToInt64(obj.Size), aws.ToTime(obj.LastModified)))
 	}
 
 	return entries

@@ -3,7 +3,6 @@ package s3
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"net/http"
 	"testing"
 	"time"
@@ -184,44 +183,6 @@ func TestListPrefix(t *testing.T) {
 			assert.Equal(t, tc.want, listPrefix(tc.fullName))
 		})
 	}
-}
-
-func TestDirEntry_File(t *testing.T) {
-	t.Parallel()
-
-	now := time.Unix(1700000000, 0).UTC()
-	entry := &dirEntry{name: "video.mp4", size: 1024, modTime: now}
-
-	assert.Equal(t, "video.mp4", entry.Name())
-	assert.False(t, entry.IsDir())
-	assert.Equal(t, fs.FileMode(0), entry.Mode())
-	assert.Equal(t, fs.FileMode(0), entry.Type())
-	assert.Equal(t, int64(1024), entry.Size())
-	assert.Equal(t, now, entry.ModTime())
-	assert.Nil(t, entry.Sys())
-
-	info, err := entry.Info()
-	require.NoError(t, err)
-	assert.Equal(t, "video.mp4", info.Name())
-	assert.Equal(t, int64(1024), info.Size())
-	assert.False(t, info.IsDir())
-}
-
-func TestDirEntry_Dir(t *testing.T) {
-	t.Parallel()
-
-	entry := &dirEntry{name: "subdir", isDir: true}
-
-	assert.Equal(t, "subdir", entry.Name())
-	assert.True(t, entry.IsDir())
-	assert.Equal(t, fs.ModeDir, entry.Mode())
-	assert.Equal(t, fs.ModeDir, entry.Type())
-	assert.Equal(t, int64(0), entry.Size())
-	assert.True(t, entry.ModTime().IsZero())
-
-	info, err := entry.Info()
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
 }
 
 func TestDirEntriesFromPage(t *testing.T) {

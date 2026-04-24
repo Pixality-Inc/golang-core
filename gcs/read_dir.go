@@ -73,10 +73,7 @@ func dirEntryFromAttrs(attrs *gcs.ObjectAttrs, prefix string) storage.DirEntry {
 			return nil
 		}
 
-		return &dirEntry{
-			name:  name,
-			isDir: true,
-		}
+		return storage.NewDirEntry(name)
 	}
 
 	name := strings.TrimPrefix(attrs.Name, prefix)
@@ -91,11 +88,7 @@ func dirEntryFromAttrs(attrs *gcs.ObjectAttrs, prefix string) storage.DirEntry {
 		return nil
 	}
 
-	return &dirEntry{
-		name:    name,
-		size:    attrs.Size,
-		modTime: attrs.Updated,
-	}
+	return storage.NewFileEntry(name, attrs.Size, attrs.Updated)
 }
 
 // listPrefix normalizes a resolved full object name into a GCS listing prefix
