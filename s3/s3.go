@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -380,80 +379,6 @@ func isNotFoundErr(err error) bool {
 	return false
 }
 
-// ReadDir lists immediate children under objectName. S3 has no real directories,
-// so the result is built from ListObjectsV2 with Delimiter="/": Contents become
-// file entries, CommonPrefixes become dir entries. Names are returned relative
-// to objectName (tail only), matching os.ReadDir semantics.
-func (c *Impl) ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error) {
-	log := c.log.GetLogger(ctx)
-
-	log.Infof("Listing directory '%s'", objectName)
-
-	if err := c.init(ctx); err != nil {
-		return nil, err
-	}
-
-	prefix := listPrefix(c.getObjectFullName(objectName))
-
-	paginator := awss3.NewListObjectsV2Paginator(c.client, &awss3.ListObjectsV2Input{
-		Bucket:    aws.String(c.bucketName),
-		Prefix:    aws.String(prefix),
-		Delimiter: aws.String("/"),
-	})
-
-	var entries []storage.DirEntry
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("s3: list '%s': %w", prefix, err)
-		}
-
-		for _, cp := range page.CommonPrefixes {
-			name := strings.TrimSuffix(strings.TrimPrefix(aws.ToString(cp.Prefix), prefix), "/")
-			if name == "" {
-				continue
-			}
-
-			entries = append(entries, &dirEntry{
-				name:  name,
-				isDir: true,
-			})
-		}
-
-		for _, obj := range page.Contents {
-			name := strings.TrimPrefix(aws.ToString(obj.Key), prefix)
-			if name == "" {
-				// the prefix itself materialized as a zero-byte object, skip
-				continue
-			}
-
-			entries = append(entries, &dirEntry{
-				name:    name,
-				size:    aws.ToInt64(obj.Size),
-				modTime: aws.ToTime(obj.LastModified),
-			})
-		}
-	}
-
-	return entries, nil
-}
-
-// listPrefix normalizes a resolved full object name into a ListObjectsV2 prefix
-// with a trailing slash, so Delimiter="/" groups immediate children. An empty
-// full name lists the whole bucket root.
-func listPrefix(fullName string) string {
-	if fullName == "" {
-		return ""
-	}
-
-	if strings.HasSuffix(fullName, "/") {
-		return fullName
-	}
-
-	return fullName + "/"
-}
-
 func (c *Impl) GetPublicUrl(_ context.Context, objectName string) (string, error) {
 	objectFullName := c.getObjectFullName(objectName)
 
@@ -667,36 +592,4 @@ func (c *Impl) getObjectFullName(objectName string) string {
 // bucket/key separator left as a literal '/' so S3 can split on it.
 func buildCopySource(bucket, key string) string {
 	return bucket + "/" + strings.ReplaceAll(url.PathEscape(key), "%2F", "/")
-}
-
-// dirEntry implements storage.DirEntry and fs.FileInfo for S3 list results.
-// For CommonPrefixes (dirs) size and modTime stay zero since S3 does not
-// expose them.
-type dirEntry struct {
-	name    string
-	isDir   bool
-	size    int64
-	modTime time.Time
-}
-
-func (e *dirEntry) Name() string       { return e.name }
-func (e *dirEntry) IsDir() bool        { return e.isDir }
-func (e *dirEntry) Size() int64        { return e.size }
-func (e *dirEntry) ModTime() time.Time { return e.modTime }
-func (e *dirEntry) Sys() any           { return nil }
-
-func (e *dirEntry) Mode() fs.FileMode {
-	if e.isDir {
-		return fs.ModeDir
-	}
-
-	return 0
-}
-
-func (e *dirEntry) Type() fs.FileMode {
-	return e.Mode()
-}
-
-func (e *dirEntry) Info() (fs.FileInfo, error) {
-	return e, nil
 }
