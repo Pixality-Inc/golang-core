@@ -1,13 +1,14 @@
 package providers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 
+	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/storage"
 )
 
@@ -63,28 +64,103 @@ func (s *SyncImpl) DeleteDir(ctx context.Context, path string) error {
 }
 
 func (s *SyncImpl) Write(ctx context.Context, path string, file io.Reader) error {
-	body, err := io.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("%w: failed to read source for %s: %w", ErrStorageFailed, path, err)
+	if len(s.storages) == 0 {
+		return fmt.Errorf("%w: no storages configured", ErrStorageFailed)
 	}
 
-	for _, entry := range s.storages {
-		if err := entry.Write(ctx, path, bytes.NewReader(body)); err != nil {
-			return fmt.Errorf("%w: failed to write file %s: %w", ErrStorageFailed, path, err)
+	log := logger.GetLogger(ctx)
+
+	tmpFile, err := os.CreateTemp("", "sync-write-*")
+	if err != nil {
+		return fmt.Errorf("%w: failed to create temp file for %s: %w", ErrStorageFailed, path, err)
+	}
+
+	tmpName := tmpFile.Name()
+
+	defer func() {
+		if rmErr := os.Remove(tmpName); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.WithError(rmErr).Errorf("sync storage: failed to remove temp spool file %s", tmpName)
 		}
+	}()
+
+	if _, err = io.Copy(tmpFile, file); err != nil {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			log.WithError(closeErr).Errorf("sync storage: failed to close temp spool file %s", tmpName)
+		}
+
+		return fmt.Errorf("%w: failed to spool source for %s: %w", ErrStorageFailed, path, err)
+	}
+
+	if err = tmpFile.Sync(); err != nil {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			log.WithError(closeErr).Errorf("sync storage: failed to close temp spool file %s", tmpName)
+		}
+
+		return fmt.Errorf("%w: failed to sync spool for %s: %w", ErrStorageFailed, path, err)
+	}
+
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("%w: failed to close spool for %s: %w", ErrStorageFailed, path, err)
+	}
+
+	var written []storage.Storage
+
+	for _, entry := range s.storages {
+		spoolReader, openErr := os.Open(tmpName)
+		if openErr != nil {
+			return fmt.Errorf("%w: failed to open spool for %s: %w", ErrStorageFailed, path, openErr)
+		}
+
+		writeErr := entry.Write(ctx, path, spoolReader)
+		closeErr := spoolReader.Close()
+
+		if writeErr != nil {
+			for _, w := range written {
+				if delErr := w.DeleteFile(ctx, path); delErr != nil {
+					log.WithError(delErr).Errorf("sync storage rollback: failed to delete %s", path)
+				}
+			}
+
+			return fmt.Errorf("%w: failed to write file %s: %w", ErrStorageFailed, path, writeErr)
+		}
+
+		if closeErr != nil {
+			for _, w := range written {
+				if delErr := w.DeleteFile(ctx, path); delErr != nil {
+					log.WithError(delErr).Errorf("sync storage rollback: failed to delete %s", path)
+				}
+			}
+
+			if delErr := entry.DeleteFile(ctx, path); delErr != nil {
+				log.WithError(delErr).Errorf("sync storage rollback: failed to delete %s", path)
+			}
+
+			return fmt.Errorf("%w: failed to close spool reader for %s: %w", ErrStorageFailed, path, closeErr)
+		}
+
+		written = append(written, entry)
 	}
 
 	return nil
 }
 
 func (s *SyncImpl) ReadFile(ctx context.Context, path string) (io.ReadCloser, error) {
-	for _, entry := range s.storages {
-		if file, err := entry.ReadFile(ctx, path); err == nil {
-			return file, nil
-		}
+	if len(s.storages) == 0 {
+		return nil, fmt.Errorf("%w: no storages configured", ErrStorageFailed)
 	}
 
-	return nil, fmt.Errorf("%w: failed to read file %s", ErrStorageFailed, path)
+	var errs []error
+
+	for _, entry := range s.storages {
+		file, err := entry.ReadFile(ctx, path)
+		if err == nil {
+			return file, nil
+		}
+
+		errs = append(errs, err)
+	}
+
+	return nil, fmt.Errorf("%w: failed to read file %s: %w", ErrStorageFailed, path, errors.Join(errs...))
 }
 
 func (s *SyncImpl) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
@@ -149,18 +225,18 @@ func dirEntriesMatch(aEntries []storage.DirEntry, bEntries []storage.DirEntry) b
 		return false
 	}
 
-	namesA := make([]string, len(aEntries))
+	sigsA := make([]string, len(aEntries))
 	for i, e := range aEntries {
-		namesA[i] = e.Name()
+		sigsA[i] = fmt.Sprintf("%s|%t|%d", e.Name(), e.IsDir(), e.Type())
 	}
 
-	namesB := make([]string, len(bEntries))
+	sigsB := make([]string, len(bEntries))
 	for i, e := range bEntries {
-		namesB[i] = e.Name()
+		sigsB[i] = fmt.Sprintf("%s|%t|%d", e.Name(), e.IsDir(), e.Type())
 	}
 
-	slices.Sort(namesA)
-	slices.Sort(namesB)
+	slices.Sort(sigsA)
+	slices.Sort(sigsB)
 
-	return slices.Equal(namesA, namesB)
+	return slices.Equal(sigsA, sigsB)
 }

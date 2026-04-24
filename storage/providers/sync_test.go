@@ -1,11 +1,11 @@
 package providers
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/pixality-inc/golang-core/storage"
@@ -95,7 +95,7 @@ func TestSyncStorage_Write_ReadFile_roundTrip(t *testing.T) {
 	syncStore, root1, root2 := newDualOsSyncStorage(t)
 
 	want := []byte("hello world")
-	require.NoError(t, syncStore.Write(ctx, "sub/file.bin", strings.NewReader(string(want))))
+	require.NoError(t, syncStore.Write(ctx, "sub/file.bin", bytes.NewReader(want)))
 
 	requireSameFileOnBothRoots(t, root1, root2, filepath.Join("sub", "file.bin"), want)
 
@@ -223,6 +223,21 @@ func TestSyncStorage_ReadDir_mismatchBetweenRoots(t *testing.T) {
 	require.ErrorIs(t, err, ErrStorageFailed)
 }
 
+func TestSyncStorage_ReadDir_mismatchFileVsDirSameName(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	syncStore, root1, root2 := newDualOsSyncStorage(t)
+
+	require.NoError(t, syncStore.MkDir(ctx, "m/dir"))
+	require.NoError(t, os.WriteFile(filepath.Join(root1, "m", "dir", "same"), []byte("x"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(root2, "m", "dir", "same"), 0o700))
+
+	_, err := syncStore.ReadDir(ctx, "m/dir")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrStorageFailed)
+}
+
 func TestSyncStorage_Compose_noChunks(t *testing.T) {
 	t.Parallel()
 
@@ -275,6 +290,13 @@ func TestSyncStorage_Compose_multipleChunks_concatenates(t *testing.T) {
 
 	want := []byte("aabbcc")
 	requireSameFileOnBothRoots(t, root1, root2, "merged.txt", want)
+
+	for _, root := range []string{root1, root2} {
+		for _, c := range []string{"c1", "c2", "c3"} {
+			_, err := os.Stat(filepath.Join(root, c))
+			require.True(t, os.IsNotExist(err))
+		}
+	}
 }
 
 func TestSyncStorage_Compose_chunkMissing_wrapsErrChunkProcess(t *testing.T) {

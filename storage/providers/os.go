@@ -152,10 +152,6 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 	tmpName := tmpFile.Name()
 
 	defer func() {
-		if fErr := tmpFile.Close(); fErr != nil {
-			log.WithError(fErr).Errorf("failed to close temp file '%s'", tmpName)
-		}
-
 		if rmErr := os.Remove(tmpName); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
 			log.WithError(rmErr).Errorf("failed to remove temp file '%s'", tmpName)
 		}
@@ -188,8 +184,22 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 		}
 	}
 
+	if err = tmpFile.Sync(); err != nil {
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
 	if err = os.Rename(tmpName, destPath); err != nil {
 		return fmt.Errorf("rename temp file to destination: %w", err)
+	}
+
+	for _, chunkPath := range chunks {
+		if rmErr := os.Remove(p.getFullPath(chunkPath)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.WithError(rmErr).Errorf("failed to remove chunk '%s' after compose", chunkPath)
+		}
 	}
 
 	return nil

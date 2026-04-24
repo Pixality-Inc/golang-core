@@ -1,11 +1,11 @@
 package providers
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/pixality-inc/golang-core/storage"
@@ -46,7 +46,7 @@ func TestOsProvider_Write_ReadFile_roundTrip(t *testing.T) {
 	store := NewOsProvider(root)
 
 	want := []byte("hello world")
-	require.NoError(t, store.Write(ctx, "sub/file.bin", strings.NewReader(string(want))))
+	require.NoError(t, store.Write(ctx, "sub/file.bin", bytes.NewReader(want)))
 
 	rc, err := store.ReadFile(ctx, "sub/file.bin")
 	require.NoError(t, err)
@@ -195,6 +195,11 @@ func TestOsProvider_Compose_multipleChunks_concatenates(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(root, "merged.txt"))
 	require.NoError(t, err)
 	require.Equal(t, "aabbcc", string(b))
+
+	for _, c := range []string{"c1", "c2", "c3"} {
+		_, err = os.Stat(filepath.Join(root, c))
+		require.True(t, os.IsNotExist(err))
+	}
 }
 
 func TestOsProvider_Compose_chunkMissing_wrapsErrChunkProcess(t *testing.T) {
