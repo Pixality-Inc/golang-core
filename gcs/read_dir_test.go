@@ -104,25 +104,26 @@ func TestDirEntryFromAttrs(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := dirEntryFromAttrs(tc.attrs, tc.prefix)
+			got := dirEntryFromAttrs(testCase.attrs, testCase.prefix)
 
-			if tc.wantNil {
+			if testCase.wantNil {
 				assert.Nil(t, got)
+
 				return
 			}
 
 			require.NotNil(t, got)
-			assert.Equal(t, tc.wantName, got.Name())
-			assert.Equal(t, tc.wantIsDir, got.IsDir())
+			assert.Equal(t, testCase.wantName, got.Name())
+			assert.Equal(t, testCase.wantIsDir, got.IsDir())
 
-			if !tc.wantIsDir {
+			if !testCase.wantIsDir {
 				info, err := got.Info()
 				require.NoError(t, err)
-				assert.Equal(t, tc.wantSize, info.Size())
+				assert.Equal(t, testCase.wantSize, info.Size())
 			}
 		})
 	}

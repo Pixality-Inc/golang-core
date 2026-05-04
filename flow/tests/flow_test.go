@@ -1094,6 +1094,62 @@ func TestFlow(t *testing.T) {
 			},
 			wantResultLen: 1,
 		},
+		{
+			name: "result_data_script",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testCommandToRun).
+					WithResult(flow.NewActionResult().WithDataScript("test script")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock: func() flow.ScriptDriver {
+				mock := mockFlow.NewMockScriptDriver(mockCtrl)
+
+				mock.EXPECT().
+					Execute(ctx, defaultEnv, "action.test.result.data_script", "test script").
+					DoAndReturn(func(_ context.Context, resultEnv *flow.Env, _ string, _ string) (any, error) {
+						return "test", nil
+					})
+				mock.EXPECT().ValueToMapStringAny("test").Return(map[string]any{"b": 3.14}, nil)
+
+				return mock
+			},
+			localStorageMock: noLocalStorageMock,
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse(),
+				},
+				Data: map[string]any{"b": 3.14},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "result_data_script_fail",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testCommandToRun).
+					WithResult(flow.NewActionResult().WithDataScript("test script")),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock: func() flow.ScriptDriver {
+				mock := mockFlow.NewMockScriptDriver(mockCtrl)
+
+				mock.EXPECT().
+					Execute(ctx, gomock.AssignableToTypeOf(&flow.Env{}), "action.test.result.data_script", "test script").
+					Return("", errTestError)
+
+				return mock
+			},
+			localStorageMock: noLocalStorageMock,
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse(),
+				},
+			},
+			wantErr: errTestError,
+		},
 	}
 
 	for _, testCase := range tests {
@@ -1127,6 +1183,10 @@ func TestFlow(t *testing.T) {
 			if testCase.wantResult != nil {
 				require.NotNil(t, result)
 				require.Len(t, result.ActionsResponses, len(testCase.wantResult.ActionsResponses))
+
+				if testCase.wantResult.Data != nil {
+					require.Equal(t, testCase.wantResult.Data, result.Data)
+				}
 
 				for index, response := range testCase.wantResult.ActionsResponses {
 					resultResponse, ok := result.ActionsResponses[index]
