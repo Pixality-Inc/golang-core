@@ -116,7 +116,7 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 	for _, action := range f.config.Actions {
 		track := timetrack.New(ctx)
 
-		actionResponse, err := f.runAction(ctx, env, action)
+		actionResponse, err := f.runAction(ctx, env, result, action)
 		if err != nil {
 			if actionResponse != nil {
 				duration := track.Finish()
@@ -138,20 +138,6 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 			WithStartedAt(track.Start).
 			WithFinishedAt(track.End).
 			WithDuration(duration)
-
-		if action.Result != nil && action.Result.DataScript != "" && !actionResponse.Skipped {
-			dataResult, err := f.evalScript(ctx, env, "action."+action.Name+".result.data_script", action.Result.DataScript)
-			if err != nil {
-				return result, fmt.Errorf("eval action '%s' result data script: %w", action.Name, err)
-			}
-
-			data, err := f.scriptDriver.ValueToMapStringAny(dataResult)
-			if err != nil {
-				return result, fmt.Errorf("action '%s' result data jsValue to map[string]any: %w", action.Name, err)
-			}
-
-			result.Data = data
-		}
 	}
 
 	return result, nil
@@ -193,13 +179,14 @@ func (f *Impl) Throw(err error) {
 	f.scriptDriver.Throw(err)
 }
 
-func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {
+func (f *Impl) runAction(ctx context.Context, env *Env, result *Result, action Action) (*ActionResponse, error) {
 	hasTrigger := action.Trigger != nil
+	hasResult := action.Result != nil
 	hasCommand := action.Command != ""
 	hasScript := action.Script != ""
 	hasScriptFile := action.ScriptFile != ""
 
-	optionsSum := util.SliceSum([]bool{hasTrigger, hasCommand, hasScript, hasScriptFile}, 0, boolInc)
+	optionsSum := util.SliceSum([]bool{hasTrigger, hasResult, hasCommand, hasScript, hasScriptFile}, 0, boolInc)
 
 	if optionsSum <= 0 {
 		return nil, ErrActionNoOptions
@@ -219,6 +206,9 @@ func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionR
 	case hasTrigger:
 		return f.runActionTrigger(ctx, env, action)
 
+	case hasResult:
+		return f.runActionResult(ctx, env, result, action)
+
 	case hasCommand:
 		return f.runActionCommand(ctx, env, action)
 
@@ -230,6 +220,27 @@ func (f *Impl) runAction(ctx context.Context, env *Env, action Action) (*ActionR
 	}
 
 	return nil, util.ErrNotImplemented
+}
+
+func (f *Impl) runActionResult(ctx context.Context, env *Env, flowResult *Result, action Action) (*ActionResponse, error) {
+	dataScript := action.Result.DataScript
+	if dataScript == "" {
+		return NewActionResponse(), nil
+	}
+
+	dataResult, err := f.evalScript(ctx, env, "action."+action.Name+".result.data_script", dataScript)
+	if err != nil {
+		return nil, fmt.Errorf("eval js result data script: %w", err)
+	}
+
+	data, err := f.scriptDriver.ValueToMapStringAny(dataResult)
+	if err != nil {
+		return nil, fmt.Errorf("result data jsValue to map[string]any: %w", err)
+	}
+
+	flowResult.Data = data
+
+	return NewActionResponse(), nil
 }
 
 //nolint:cyclop

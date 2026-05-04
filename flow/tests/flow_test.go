@@ -360,6 +360,18 @@ func TestFlow(t *testing.T) {
 			wantErr:            flow.ErrActionTooManyOptions,
 		},
 		{
+			name: "too_many_options5",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testCommandToRun).
+					WithResult(flow.NewActionResult().WithDataScript("test script")),
+			},
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			wantErr:            flow.ErrActionTooManyOptions,
+		},
+		{
 			name: "args_too_many_options",
 			actions: []flow.Action{
 				flow.NewAction("test").
@@ -1098,7 +1110,6 @@ func TestFlow(t *testing.T) {
 			name: "result_data_script",
 			actions: []flow.Action{
 				flow.NewAction("test").
-					WithCommand(testCommandToRun).
 					WithResult(flow.NewActionResult().WithDataScript("test script")),
 			},
 			env:                defaultEnv,
@@ -1128,7 +1139,6 @@ func TestFlow(t *testing.T) {
 			name: "result_data_script_fail",
 			actions: []flow.Action{
 				flow.NewAction("test").
-					WithCommand(testCommandToRun).
 					WithResult(flow.NewActionResult().WithDataScript("test script")),
 			},
 			env:                defaultEnv,
@@ -1143,12 +1153,8 @@ func TestFlow(t *testing.T) {
 				return mock
 			},
 			localStorageMock: noLocalStorageMock,
-			wantResult: &flow.Result{
-				ActionsResponses: map[string]*flow.ActionResponse{
-					"test": flow.NewActionResponse(),
-				},
-			},
-			wantErr: errTestError,
+			wantResult:       &flow.Result{},
+			wantErr:          errTestError,
 		},
 	}
 
