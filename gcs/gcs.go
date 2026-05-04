@@ -212,7 +212,7 @@ func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	readCloser, err := c.client.Bucket(c.bucketName).Object(objectFullName).NewReader(ctx)
+	readCloser, err := c.client.Bucket(c.bucketName).Object(objectFullName).ReadCompressed(true).NewReader(ctx)
 	if err != nil {
 		return nil, err
 	}
