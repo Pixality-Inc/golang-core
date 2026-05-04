@@ -138,6 +138,20 @@ func (f *Impl) Run(ctx context.Context, env *Env) (*Result, error) {
 			WithStartedAt(track.Start).
 			WithFinishedAt(track.End).
 			WithDuration(duration)
+
+		if action.Result != nil && action.Result.DataScript != "" && !actionResponse.Skipped {
+			dataResult, err := f.evalScript(ctx, env, "action."+action.Name+".result.data_script", action.Result.DataScript)
+			if err != nil {
+				return result, fmt.Errorf("eval action '%s' result data script: %w", action.Name, err)
+			}
+
+			data, err := f.scriptDriver.ValueToMapStringAny(dataResult)
+			if err != nil {
+				return result, fmt.Errorf("action '%s' result data jsValue to map[string]any: %w", action.Name, err)
+			}
+
+			result.Data = data
+		}
 	}
 
 	return result, nil

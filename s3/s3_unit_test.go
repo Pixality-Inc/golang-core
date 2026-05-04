@@ -271,16 +271,18 @@ func TestDirEntriesFromPage(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := dirEntriesFromPage(tc.commonPrefixes, tc.contents, tc.prefix)
+			got := dirEntriesFromPage(testCase.commonPrefixes, testCase.contents, testCase.prefix)
 
-			require.Len(t, got, len(tc.want))
-			for i, w := range tc.want {
+			require.Len(t, got, len(testCase.want))
+
+			for i, w := range testCase.want {
 				assert.Equal(t, w.name, got[i].Name(), "entry %d name", i)
 				assert.Equal(t, w.isDir, got[i].IsDir(), "entry %d isDir", i)
+
 				if !w.isDir {
 					info, err := got[i].Info()
 					require.NoError(t, err)

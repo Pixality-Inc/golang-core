@@ -18,4 +18,5 @@ func NewEnv(workDir string, context map[string]any) *Env {
 
 type Result struct {
 	ActionsResponses map[string]*ActionResponse
+	Data             map[string]any
 }
