@@ -244,18 +244,17 @@ func TestSyncStorage_Multipart_replicatesToBothRoots(t *testing.T) {
 	ctx := context.Background()
 	syncStore, root1, root2 := newDualOsSyncStorage(t)
 
-	uploadId, err := syncStore.CreateMultipartUpload(ctx, "merged.txt")
+	upload, err := syncStore.CreateMultipartUpload(ctx, "merged.txt")
 	require.NoError(t, err)
-	require.NotEmpty(t, uploadId)
+	require.NotEmpty(t, upload.Id())
 
-	etag1, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", uploadId, 1, bytes.NewReader([]byte("aa")), 2)
+	chunk1, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", upload, 1, bytes.NewReader([]byte("aa")), 2)
 	require.NoError(t, err)
-	etag2, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", uploadId, 2, bytes.NewReader([]byte("bb")), 2)
+	chunk2, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", upload, 2, bytes.NewReader([]byte("bb")), 2)
 	require.NoError(t, err)
 
-	require.NoError(t, syncStore.CompleteMultipartUpload(ctx, "merged.txt", uploadId, []storage.MultipartChunk{
-		{Number: 1, ETag: etag1},
-		{Number: 2, ETag: etag2},
+	require.NoError(t, syncStore.CompleteMultipartUpload(ctx, "merged.txt", upload, []storage.MultipartChunk{
+		chunk1, chunk2,
 	}))
 
 	requireSameFileOnBothRoots(t, root1, root2, "merged.txt", []byte("aabb"))
@@ -267,13 +266,13 @@ func TestSyncStorage_Multipart_abort_cleansBothRoots(t *testing.T) {
 	ctx := context.Background()
 	syncStore, root1, root2 := newDualOsSyncStorage(t)
 
-	uploadId, err := syncStore.CreateMultipartUpload(ctx, "out.txt")
+	upload, err := syncStore.CreateMultipartUpload(ctx, "out.txt")
 	require.NoError(t, err)
 
-	_, err = syncStore.UploadMultipartChunk(ctx, "out.txt", uploadId, 1, bytes.NewReader([]byte("x")), 1)
+	_, err = syncStore.UploadMultipartChunk(ctx, "out.txt", upload, 1, bytes.NewReader([]byte("x")), 1)
 	require.NoError(t, err)
 
-	require.NoError(t, syncStore.AbortMultipartUpload(ctx, "out.txt", uploadId))
+	require.NoError(t, syncStore.AbortMultipartUpload(ctx, "out.txt", upload))
 
 	for _, root := range []string{root1, root2} {
 		_, err = os.Stat(filepath.Join(root, "out.txt.parts"))

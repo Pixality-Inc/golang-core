@@ -201,57 +201,90 @@ func (s *SyncImpl) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
-// syncMultipartUploadId is the opaque uploadId returned by SyncImpl. It
-// carries the per-storage uploadIds in order so that subsequent calls
-// can dispatch to each child storage without keeping local state.
-type syncMultipartUploadId struct {
-	Ids []string `json:"ids"`
+// syncMultipartUpload carries the per-storage uploads in order so that
+// subsequent calls can dispatch to each child storage without keeping
+// local state. Its Id() is a JSON-encoded copy of the per-storage ids,
+// kept for backward-compatible logging/diagnostics.
+type syncMultipartUpload struct {
+	uploads []storage.MultipartUpload
 }
 
-func (s *SyncImpl) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
-	if len(s.storages) == 0 {
-		return "", fmt.Errorf("%w: no storages configured", ErrStorageFailed)
+func (u *syncMultipartUpload) Id() string {
+	ids := make([]string, len(u.uploads))
+	for i, up := range u.uploads {
+		ids[i] = up.Id()
 	}
 
-	ids := make([]string, 0, len(s.storages))
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return ""
+	}
+
+	return string(encoded)
+}
+
+// syncMultipartChunk fans an uploaded chunk out across child storages.
+type syncMultipartChunk struct {
+	number int
+	chunks []storage.MultipartChunk
+}
+
+func (c *syncMultipartChunk) Number() int { return c.number }
+
+func (c *syncMultipartChunk) ETag() string {
+	etags := make([]string, len(c.chunks))
+	for i, ch := range c.chunks {
+		etags[i] = ch.ETag()
+	}
+
+	encoded, err := json.Marshal(etags)
+	if err != nil {
+		return ""
+	}
+
+	return string(encoded)
+}
+
+func (s *SyncImpl) CreateMultipartUpload(ctx context.Context, path string) (storage.MultipartUpload, error) {
+	if len(s.storages) == 0 {
+		return nil, fmt.Errorf("%w: no storages configured", ErrStorageFailed)
+	}
+
+	uploads := make([]storage.MultipartUpload, 0, len(s.storages))
 
 	for i, entry := range s.storages {
-		id, err := entry.CreateMultipartUpload(ctx, path)
+		upload, err := entry.CreateMultipartUpload(ctx, path)
 		if err != nil {
 			for j := range i {
-				if abortErr := s.storages[j].AbortMultipartUpload(ctx, path, ids[j]); abortErr != nil {
+				if abortErr := s.storages[j].AbortMultipartUpload(ctx, path, uploads[j]); abortErr != nil {
 					logger.GetLogger(ctx).WithError(abortErr).Errorf("sync storage rollback: failed to abort %s", path)
 				}
 			}
 
-			return "", fmt.Errorf("%w: failed to create multipart for %s: %w", ErrStorageFailed, path, err)
+			return nil, fmt.Errorf("%w: failed to create multipart for %s: %w", ErrStorageFailed, path, err)
 		}
 
-		ids = append(ids, id)
+		uploads = append(uploads, upload)
 	}
 
-	return encodeSyncUploadId(ids)
+	return &syncMultipartUpload{uploads: uploads}, nil
 }
 
-func (s *SyncImpl) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
+func (s *SyncImpl) UploadMultipartChunk(ctx context.Context, path string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error) {
 	if len(s.storages) == 0 {
-		return "", fmt.Errorf("%w: no storages configured", ErrStorageFailed)
+		return nil, fmt.Errorf("%w: no storages configured", ErrStorageFailed)
 	}
 
-	ids, err := decodeSyncUploadId(uploadId)
+	syncUpload, err := s.castUpload(upload)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrStorageFailed, err)
-	}
-
-	if len(ids) != len(s.storages) {
-		return "", fmt.Errorf("%w: uploadId carries %d ids, %d storages configured", ErrStorageFailed, len(ids), len(s.storages))
+		return nil, err
 	}
 
 	log := logger.GetLogger(ctx)
 
 	tmpFile, err := os.CreateTemp("", "sync-upload-part-*")
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to create temp file for %s: %w", ErrStorageFailed, path, err)
+		return nil, fmt.Errorf("%w: failed to create temp file for %s: %w", ErrStorageFailed, path, err)
 	}
 
 	tmpName := tmpFile.Name()
@@ -267,7 +300,7 @@ func (s *SyncImpl) UploadMultipartChunk(ctx context.Context, path, uploadId stri
 			log.WithError(closeErr).Errorf("sync storage: failed to close temp spool file %s", tmpName)
 		}
 
-		return "", fmt.Errorf("%w: failed to spool source for %s: %w", ErrStorageFailed, path, err)
+		return nil, fmt.Errorf("%w: failed to spool source for %s: %w", ErrStorageFailed, path, err)
 	}
 
 	if err = tmpFile.Sync(); err != nil {
@@ -275,68 +308,61 @@ func (s *SyncImpl) UploadMultipartChunk(ctx context.Context, path, uploadId stri
 			log.WithError(closeErr).Errorf("sync storage: failed to close temp spool file %s", tmpName)
 		}
 
-		return "", fmt.Errorf("%w: failed to sync spool for %s: %w", ErrStorageFailed, path, err)
+		return nil, fmt.Errorf("%w: failed to sync spool for %s: %w", ErrStorageFailed, path, err)
 	}
 
 	if err = tmpFile.Close(); err != nil {
-		return "", fmt.Errorf("%w: failed to close spool for %s: %w", ErrStorageFailed, path, err)
+		return nil, fmt.Errorf("%w: failed to close spool for %s: %w", ErrStorageFailed, path, err)
 	}
 
-	etags := make([]string, 0, len(s.storages))
+	chunks := make([]storage.MultipartChunk, 0, len(s.storages))
 
 	for i, entry := range s.storages {
 		spoolReader, openErr := os.Open(tmpName)
 		if openErr != nil {
-			return "", fmt.Errorf("%w: failed to open spool for %s: %w", ErrStorageFailed, path, openErr)
+			return nil, fmt.Errorf("%w: failed to open spool for %s: %w", ErrStorageFailed, path, openErr)
 		}
 
-		etag, partErr := entry.UploadMultipartChunk(ctx, path, ids[i], chunkNumber, spoolReader, size)
+		chunk, partErr := entry.UploadMultipartChunk(ctx, path, syncUpload.uploads[i], chunkNumber, spoolReader, size)
 		closeErr := spoolReader.Close()
 
 		if partErr != nil {
-			return "", fmt.Errorf("%w: failed to upload chunk %d for %s: %w", ErrStorageFailed, chunkNumber, path, partErr)
+			return nil, fmt.Errorf("%w: failed to upload chunk %d for %s: %w", ErrStorageFailed, chunkNumber, path, partErr)
 		}
 
 		if closeErr != nil {
-			return "", fmt.Errorf("%w: failed to close spool reader for %s: %w", ErrStorageFailed, path, closeErr)
+			return nil, fmt.Errorf("%w: failed to close spool reader for %s: %w", ErrStorageFailed, path, closeErr)
 		}
 
-		etags = append(etags, etag)
+		chunks = append(chunks, chunk)
 	}
 
-	return encodeSyncEtags(etags)
+	return &syncMultipartChunk{number: chunkNumber, chunks: chunks}, nil
 }
 
-func (s *SyncImpl) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []storage.MultipartChunk) error {
-	ids, err := decodeSyncUploadId(uploadId)
+func (s *SyncImpl) CompleteMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
+	syncUpload, err := s.castUpload(upload)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStorageFailed, err)
-	}
-
-	if len(ids) != len(s.storages) {
-		return fmt.Errorf("%w: uploadId carries %d ids, %d storages configured", ErrStorageFailed, len(ids), len(s.storages))
+		return err
 	}
 
 	for i, entry := range s.storages {
 		childChunks := make([]storage.MultipartChunk, 0, len(chunks))
 
 		for _, chunk := range chunks {
-			etags, decErr := decodeSyncEtags(chunk.ETag)
-			if decErr != nil {
-				return fmt.Errorf("%w: chunk %d etag: %w", ErrStorageFailed, chunk.Number, decErr)
+			syncChunk, ok := chunk.(*syncMultipartChunk)
+			if !ok {
+				return fmt.Errorf("%w: chunk %d is not a sync chunk", ErrStorageFailed, chunk.Number())
 			}
 
-			if len(etags) != len(s.storages) {
-				return fmt.Errorf("%w: chunk %d carries %d etags, %d storages configured", ErrStorageFailed, chunk.Number, len(etags), len(s.storages))
+			if len(syncChunk.chunks) != len(s.storages) {
+				return fmt.Errorf("%w: chunk %d carries %d entries, %d storages configured", ErrStorageFailed, chunk.Number(), len(syncChunk.chunks), len(s.storages))
 			}
 
-			childChunks = append(childChunks, storage.MultipartChunk{
-				Number: chunk.Number,
-				ETag:   etags[i],
-			})
+			childChunks = append(childChunks, syncChunk.chunks[i])
 		}
 
-		if err = entry.CompleteMultipartUpload(ctx, path, ids[i], childChunks); err != nil {
+		if err = entry.CompleteMultipartUpload(ctx, path, syncUpload.uploads[i], childChunks); err != nil {
 			return fmt.Errorf("%w: failed to complete multipart for %s: %w", ErrStorageFailed, path, err)
 		}
 	}
@@ -344,20 +370,16 @@ func (s *SyncImpl) CompleteMultipartUpload(ctx context.Context, path, uploadId s
 	return nil
 }
 
-func (s *SyncImpl) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
-	ids, err := decodeSyncUploadId(uploadId)
+func (s *SyncImpl) AbortMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload) error {
+	syncUpload, err := s.castUpload(upload)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStorageFailed, err)
-	}
-
-	if len(ids) != len(s.storages) {
-		return fmt.Errorf("%w: uploadId carries %d ids, %d storages configured", ErrStorageFailed, len(ids), len(s.storages))
+		return err
 	}
 
 	var errs []error
 
 	for i, entry := range s.storages {
-		if abortErr := entry.AbortMultipartUpload(ctx, path, ids[i]); abortErr != nil {
+		if abortErr := entry.AbortMultipartUpload(ctx, path, syncUpload.uploads[i]); abortErr != nil {
 			errs = append(errs, abortErr)
 		}
 	}
@@ -369,42 +391,6 @@ func (s *SyncImpl) AbortMultipartUpload(ctx context.Context, path, uploadId stri
 	return nil
 }
 
-func encodeSyncUploadId(ids []string) (string, error) {
-	encoded, err := json.Marshal(syncMultipartUploadId{Ids: ids})
-	if err != nil {
-		return "", fmt.Errorf("encode sync uploadId: %w", err)
-	}
-
-	return string(encoded), nil
-}
-
-func decodeSyncUploadId(s string) ([]string, error) {
-	var v syncMultipartUploadId
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return nil, fmt.Errorf("decode sync uploadId: %w", err)
-	}
-
-	return v.Ids, nil
-}
-
-func encodeSyncEtags(etags []string) (string, error) {
-	encoded, err := json.Marshal(etags)
-	if err != nil {
-		return "", fmt.Errorf("encode sync etags: %w", err)
-	}
-
-	return string(encoded), nil
-}
-
-func decodeSyncEtags(s string) ([]string, error) {
-	var v []string
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return nil, fmt.Errorf("decode sync etags: %w", err)
-	}
-
-	return v, nil
-}
-
 func (s *SyncImpl) Close() error {
 	for _, entry := range s.storages {
 		if err := entry.Close(); err != nil {
@@ -413,6 +399,19 @@ func (s *SyncImpl) Close() error {
 	}
 
 	return nil
+}
+
+func (s *SyncImpl) castUpload(upload storage.MultipartUpload) (*syncMultipartUpload, error) {
+	syncUpload, ok := upload.(*syncMultipartUpload)
+	if !ok {
+		return nil, fmt.Errorf("%w: upload is not a sync upload", ErrStorageFailed)
+	}
+
+	if len(syncUpload.uploads) != len(s.storages) {
+		return nil, fmt.Errorf("%w: upload carries %d entries, %d storages configured", ErrStorageFailed, len(syncUpload.uploads), len(s.storages))
+	}
+
+	return syncUpload, nil
 }
 
 func dirEntriesMatch(aEntries []storage.DirEntry, bEntries []storage.DirEntry) bool {

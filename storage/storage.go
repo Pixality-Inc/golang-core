@@ -13,13 +13,42 @@ type DirEntry interface {
 	Info() (fs.FileInfo, error)
 }
 
+// MultipartUpload identifies an in-progress multipart upload returned by
+// CreateMultipartUpload. Providers may attach additional state by
+// implementing this interface with their own type.
+type MultipartUpload interface {
+	Id() string
+}
+
 // MultipartChunk identifies a chunk that has been uploaded as part of a
 // multipart upload. ETag is opaque to callers; providers that need a
 // content tag (S3) populate it, providers that don't (local/gcs) may
 // leave it empty.
-type MultipartChunk struct {
-	Number int
-	ETag   string
+type MultipartChunk interface {
+	Number() int
+	ETag() string
+}
+
+type multipartUpload struct {
+	id string
+}
+
+func (u multipartUpload) Id() string { return u.id }
+
+func NewMultipartUpload(id string) MultipartUpload {
+	return multipartUpload{id: id}
+}
+
+type multipartChunk struct {
+	number int
+	etag   string
+}
+
+func (c multipartChunk) Number() int  { return c.number }
+func (c multipartChunk) ETag() string { return c.etag }
+
+func NewMultipartChunk(number int, etag string) MultipartChunk {
+	return multipartChunk{number: number, etag: etag}
 }
 
 type Provider interface {
@@ -31,10 +60,10 @@ type Provider interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 	MkDir(ctx context.Context, path string) error
 
-	CreateMultipartUpload(ctx context.Context, path string) (uploadId string, err error)
-	UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (etag string, err error)
-	CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []MultipartChunk) error
-	AbortMultipartUpload(ctx context.Context, path, uploadId string) error
+	CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error)
+	UploadMultipartChunk(ctx context.Context, path string, upload MultipartUpload, chunkNumber int, body io.Reader, size int64) (MultipartChunk, error)
+	CompleteMultipartUpload(ctx context.Context, path string, upload MultipartUpload, chunks []MultipartChunk) error
+	AbortMultipartUpload(ctx context.Context, path string, upload MultipartUpload) error
 
 	Close() error
 }
@@ -55,10 +84,10 @@ type Storage interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 	MkDir(ctx context.Context, path string) error
 
-	CreateMultipartUpload(ctx context.Context, path string) (uploadId string, err error)
-	UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (etag string, err error)
-	CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []MultipartChunk) error
-	AbortMultipartUpload(ctx context.Context, path, uploadId string) error
+	CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error)
+	UploadMultipartChunk(ctx context.Context, path string, upload MultipartUpload, chunkNumber int, body io.Reader, size int64) (MultipartChunk, error)
+	CompleteMultipartUpload(ctx context.Context, path string, upload MultipartUpload, chunks []MultipartChunk) error
+	AbortMultipartUpload(ctx context.Context, path string, upload MultipartUpload) error
 
 	GetPublicUrl(ctx context.Context, path string) (string, error)
 	Close() error

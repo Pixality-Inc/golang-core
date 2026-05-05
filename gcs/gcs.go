@@ -27,6 +27,9 @@ const gcsMaxComposeSources = 32
 // CompleteMultipartUpload or AbortMultipartUpload.
 const multipartPartsSuffix = ".parts"
 
+// ErrNoChunks is returned by CompleteMultipartUpload when the caller passes an empty chunks slice.
+var ErrNoChunks = errors.New("gcs: complete multipart called with no chunks")
+
 type Client interface {
 	Close()
 
@@ -46,10 +49,10 @@ type Client interface {
 
 	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
 
-	CreateMultipartUpload(ctx context.Context, objectName string) (uploadId string, err error)
-	UploadMultipartChunk(ctx context.Context, objectName, uploadId string, chunkNumber int, body io.Reader, size int64) (etag string, err error)
-	CompleteMultipartUpload(ctx context.Context, objectName, uploadId string, chunks []storage.MultipartChunk) error
-	AbortMultipartUpload(ctx context.Context, objectName, uploadId string) error
+	CreateMultipartUpload(ctx context.Context, objectName string) (storage.MultipartUpload, error)
+	UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error)
+	CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error
+	AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error
 
 	GetPublicUrl(ctx context.Context, objectName string) (string, error)
 }
@@ -287,26 +290,26 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (*gcs.ObjectAt
 	return attrs, true, nil
 }
 
-func (c *Impl) CreateMultipartUpload(_ context.Context, _ string) (string, error) {
-	return uuid.New().String(), nil
+func (c *Impl) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {
+	return storage.NewMultipartUpload(uuid.New().String()), nil
 }
 
-func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName, uploadId string, chunkNumber int, body io.Reader, _ int64) (string, error) {
-	chunkPath := c.multipartChunkPath(objectName, uploadId, chunkNumber)
+func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, _ int64) (storage.MultipartChunk, error) {
+	chunkPath := c.multipartChunkPath(objectName, upload.Id(), chunkNumber)
 
 	if err := c.Upload(ctx, chunkPath, body); err != nil {
-		return "", fmt.Errorf("gcs: upload chunk %d for '%s': %w", chunkNumber, objectName, err)
+		return nil, fmt.Errorf("gcs: upload chunk %d for '%s': %w", chunkNumber, objectName, err)
 	}
 
-	return chunkPath, nil
+	return storage.NewMultipartChunk(chunkNumber, chunkPath), nil
 }
 
-func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName, uploadId string, chunks []storage.MultipartChunk) error {
+func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
 	log := c.log.GetLogger(ctx)
 	log.Infof("Completing multipart upload '%s' with %d chunks", objectName, len(chunks))
 
 	if len(chunks) == 0 {
-		return fmt.Errorf("gcs: complete multipart called with no chunks for '%s'", objectName)
+		return fmt.Errorf("%w: '%s'", ErrNoChunks, objectName)
 	}
 
 	if err := c.init(ctx); err != nil {
@@ -315,26 +318,38 @@ func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName, uploadId
 
 	chunkPaths := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
-		chunkPaths = append(chunkPaths, c.multipartChunkPath(objectName, uploadId, chunk.Number))
+		chunkPaths = append(chunkPaths, c.multipartChunkPath(objectName, upload.Id(), chunk.Number()))
 	}
 
-	if err := c.composeAll(ctx, objectName, uploadId, chunkPaths); err != nil {
+	if err := c.composeAll(ctx, objectName, upload.Id(), chunkPaths); err != nil {
 		return err
 	}
 
-	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, uploadId)); err != nil {
-		log.WithError(err).Errorf("gcs: failed to clean parts dir for '%s/%s'", objectName, uploadId)
+	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, upload.Id())); err != nil {
+		log.WithError(err).Errorf("gcs: failed to clean parts dir for '%s/%s'", objectName, upload.Id())
 	}
 
 	return nil
 }
 
-func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName, uploadId string) error {
-	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, uploadId)); err != nil {
-		return fmt.Errorf("gcs: abort multipart for '%s/%s': %w", objectName, uploadId, err)
+func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error {
+	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, upload.Id())); err != nil {
+		return fmt.Errorf("gcs: abort multipart for '%s/%s': %w", objectName, upload.Id(), err)
 	}
 
 	return nil
+}
+
+func (c *Impl) GetPublicUrl(ctx context.Context, objectName string) (string, error) {
+	if err := c.init(ctx); err != nil {
+		return "", err
+	}
+
+	objectFullName := c.getObjectFullName(objectName)
+
+	url := fmt.Sprintf("%s/%s", c.basePublicUrl, objectFullName)
+
+	return url, nil
 }
 
 // composeAll handles the GCS 32-sources-per-Compose limit by composing
@@ -390,18 +405,6 @@ func (c *Impl) multipartChunkPath(objectName, uploadId string, chunkNumber int) 
 	return fmt.Sprintf("%s/%d", c.multipartUploadDir(objectName, uploadId), chunkNumber)
 }
 
-func (c *Impl) GetPublicUrl(ctx context.Context, objectName string) (string, error) {
-	if err := c.init(ctx); err != nil {
-		return "", err
-	}
-
-	objectFullName := c.getObjectFullName(objectName)
-
-	url := fmt.Sprintf("%s/%s", c.basePublicUrl, objectFullName)
-
-	return url, nil
-}
-
 func (c *Impl) init(ctx context.Context) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -423,7 +426,7 @@ func (c *Impl) init(ctx context.Context) error {
 func (c *Impl) getObjectFullName(objectName string) string {
 	if c.baseDir != "" {
 		return c.baseDir + "/" + objectName
-	} else {
-		return objectName
 	}
+
+	return objectName
 }

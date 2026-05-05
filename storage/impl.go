@@ -131,35 +131,35 @@ func (s *Impl) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
-func (s *Impl) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
-	uploadId, err := s.provider.CreateMultipartUpload(ctx, path)
+func (s *Impl) CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error) {
+	upload, err := s.provider.CreateMultipartUpload(ctx, path)
 	if err != nil {
-		return "", fmt.Errorf("storage.CreateMultipartUpload(%s): %w", path, err)
+		return nil, fmt.Errorf("storage.CreateMultipartUpload(%s): %w", path, err)
 	}
 
-	return uploadId, nil
+	return upload, nil
 }
 
-func (s *Impl) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
-	etag, err := s.provider.UploadMultipartChunk(ctx, path, uploadId, chunkNumber, body, size)
+func (s *Impl) UploadMultipartChunk(ctx context.Context, path string, upload MultipartUpload, chunkNumber int, body io.Reader, size int64) (MultipartChunk, error) {
+	chunk, err := s.provider.UploadMultipartChunk(ctx, path, upload, chunkNumber, body, size)
 	if err != nil {
-		return "", fmt.Errorf("storage.UploadMultipartChunk(%s, %s, %d): %w", path, uploadId, chunkNumber, err)
+		return nil, fmt.Errorf("storage.UploadMultipartChunk(%s, %s, %d): %w", path, upload.Id(), chunkNumber, err)
 	}
 
-	return etag, nil
+	return chunk, nil
 }
 
-func (s *Impl) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []MultipartChunk) error {
-	if err := s.provider.CompleteMultipartUpload(ctx, path, uploadId, chunks); err != nil {
-		return fmt.Errorf("storage.CompleteMultipartUpload(%s, %s, %d chunks): %w", path, uploadId, len(chunks), err)
+func (s *Impl) CompleteMultipartUpload(ctx context.Context, path string, upload MultipartUpload, chunks []MultipartChunk) error {
+	if err := s.provider.CompleteMultipartUpload(ctx, path, upload, chunks); err != nil {
+		return fmt.Errorf("storage.CompleteMultipartUpload(%s, %s, %d chunks): %w", path, upload.Id(), len(chunks), err)
 	}
 
 	return nil
 }
 
-func (s *Impl) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
-	if err := s.provider.AbortMultipartUpload(ctx, path, uploadId); err != nil {
-		return fmt.Errorf("storage.AbortMultipartUpload(%s, %s): %w", path, uploadId, err)
+func (s *Impl) AbortMultipartUpload(ctx context.Context, path string, upload MultipartUpload) error {
+	if err := s.provider.AbortMultipartUpload(ctx, path, upload); err != nil {
+		return fmt.Errorf("storage.AbortMultipartUpload(%s, %s): %w", path, upload.Id(), err)
 	}
 
 	return nil

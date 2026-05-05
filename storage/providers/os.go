@@ -131,21 +131,21 @@ func (p *OsProvider) MkDir(_ context.Context, path string) error {
 	return nil
 }
 
-func (p *OsProvider) CreateMultipartUpload(_ context.Context, _ string) (string, error) {
-	return uuid.New().String(), nil
+func (p *OsProvider) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {
+	return storage.NewMultipartUpload(uuid.New().String()), nil
 }
 
-func (p *OsProvider) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, _ int64) (string, error) {
-	chunkPath := p.multipartChunkPath(path, uploadId, chunkNumber)
+func (p *OsProvider) UploadMultipartChunk(ctx context.Context, path string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, _ int64) (storage.MultipartChunk, error) {
+	chunkPath := p.multipartChunkPath(path, upload.Id(), chunkNumber)
 
 	if err := p.Write(ctx, chunkPath, body); err != nil {
-		return "", fmt.Errorf("write chunk %d: %w", chunkNumber, err)
+		return nil, fmt.Errorf("write chunk %d: %w", chunkNumber, err)
 	}
 
-	return chunkPath, nil
+	return storage.NewMultipartChunk(chunkNumber, chunkPath), nil
 }
 
-func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []storage.MultipartChunk) error {
+func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
 	log := logger.GetLogger(ctx)
 
 	if len(chunks) == 0 {
@@ -173,7 +173,7 @@ func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId
 	}()
 
 	copyChunkToTemp := func(chunkNumber int) error {
-		sourcePath := p.getFullPath(p.multipartChunkPath(path, uploadId, chunkNumber))
+		sourcePath := p.getFullPath(p.multipartChunkPath(path, upload.Id(), chunkNumber))
 
 		chunkFile, err := os.Open(sourcePath)
 		if err != nil {
@@ -194,8 +194,8 @@ func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId
 	}
 
 	for _, chunk := range chunks {
-		if err = copyChunkToTemp(chunk.Number); err != nil {
-			return fmt.Errorf("%w: chunk %d: %w", ErrChunkProcess, chunk.Number, err)
+		if err = copyChunkToTemp(chunk.Number()); err != nil {
+			return fmt.Errorf("%w: chunk %d: %w", ErrChunkProcess, chunk.Number(), err)
 		}
 	}
 
@@ -211,19 +211,27 @@ func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId
 		return fmt.Errorf("rename temp file to destination: %w", err)
 	}
 
-	if rmErr := p.cleanupMultipartDir(ctx, path, uploadId); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
-		log.WithError(rmErr).Errorf("failed to clean parts dir for '%s/%s'", path, uploadId)
+	if rmErr := p.cleanupMultipartDir(ctx, path, upload.Id()); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+		log.WithError(rmErr).Errorf("failed to clean parts dir for '%s/%s'", path, upload.Id())
 	}
 
 	return nil
 }
 
-func (p *OsProvider) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
-	if err := p.cleanupMultipartDir(ctx, path, uploadId); err != nil && !errors.Is(err, os.ErrNotExist) {
+func (p *OsProvider) AbortMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload) error {
+	if err := p.cleanupMultipartDir(ctx, path, upload.Id()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("abort multipart: %w", err)
 	}
 
 	return nil
+}
+
+func (p *OsProvider) Close() error {
+	return nil
+}
+
+func (p *OsProvider) LocalPath(_ context.Context, path string) (string, error) {
+	return p.getFullPath(path), nil
 }
 
 // cleanupMultipartDir removes the per-upload parts directory and, if the
@@ -238,14 +246,9 @@ func (p *OsProvider) cleanupMultipartDir(ctx context.Context, path, uploadId str
 	parentFull := p.getFullPath(parentRel)
 
 	if err := os.Remove(parentFull); err != nil && !errors.Is(err, os.ErrNotExist) {
-		// non-empty or other transient failure: not fatal
 		logger.GetLogger(ctx).WithError(err).Debugf("multipart parent dir '%s' not removed", parentRel)
 	}
 
-	return nil
-}
-
-func (p *OsProvider) Close() error {
 	return nil
 }
 
@@ -255,10 +258,6 @@ func (p *OsProvider) multipartUploadDir(path, uploadId string) string {
 
 func (p *OsProvider) multipartChunkPath(path, uploadId string, chunkNumber int) string {
 	return fmt.Sprintf("%s/%d", p.multipartUploadDir(path, uploadId), chunkNumber)
-}
-
-func (p *OsProvider) LocalPath(_ context.Context, path string) (string, error) {
-	return p.getFullPath(path), nil
 }
 
 func (p *OsProvider) getFullPath(path string) string {
