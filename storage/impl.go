@@ -131,9 +131,35 @@ func (s *Impl) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
-func (s *Impl) Compose(ctx context.Context, path string, chunks []string) error {
-	if err := s.provider.Compose(ctx, path, chunks); err != nil {
-		return fmt.Errorf("storage.Compose(%s, %s): %w", path, chunks, err)
+func (s *Impl) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
+	uploadId, err := s.provider.CreateMultipartUpload(ctx, path)
+	if err != nil {
+		return "", fmt.Errorf("storage.CreateMultipartUpload(%s): %w", path, err)
+	}
+
+	return uploadId, nil
+}
+
+func (s *Impl) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
+	etag, err := s.provider.UploadMultipartChunk(ctx, path, uploadId, chunkNumber, body, size)
+	if err != nil {
+		return "", fmt.Errorf("storage.UploadMultipartChunk(%s, %s, %d): %w", path, uploadId, chunkNumber, err)
+	}
+
+	return etag, nil
+}
+
+func (s *Impl) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []MultipartChunk) error {
+	if err := s.provider.CompleteMultipartUpload(ctx, path, uploadId, chunks); err != nil {
+		return fmt.Errorf("storage.CompleteMultipartUpload(%s, %s, %d chunks): %w", path, uploadId, len(chunks), err)
+	}
+
+	return nil
+}
+
+func (s *Impl) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
+	if err := s.provider.AbortMultipartUpload(ctx, path, uploadId); err != nil {
+		return fmt.Errorf("storage.AbortMultipartUpload(%s, %s): %w", path, uploadId, err)
 	}
 
 	return nil

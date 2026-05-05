@@ -42,6 +42,20 @@ func (m *MockLocalStorage) EXPECT() *MockLocalStorageMockRecorder {
 	return m.recorder
 }
 
+// AbortMultipartUpload mocks base method.
+func (m *MockLocalStorage) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AbortMultipartUpload", ctx, path, uploadId)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AbortMultipartUpload indicates an expected call of AbortMultipartUpload.
+func (mr *MockLocalStorageMockRecorder) AbortMultipartUpload(ctx, path, uploadId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AbortMultipartUpload", reflect.TypeOf((*MockLocalStorage)(nil).AbortMultipartUpload), ctx, path, uploadId)
+}
+
 // Close mocks base method.
 func (m *MockLocalStorage) Close() error {
 	m.ctrl.T.Helper()
@@ -56,18 +70,33 @@ func (mr *MockLocalStorageMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockLocalStorage)(nil).Close))
 }
 
-// Compose mocks base method.
-func (m *MockLocalStorage) Compose(ctx context.Context, path string, chunks []string) error {
+// CompleteMultipartUpload mocks base method.
+func (m *MockLocalStorage) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []storage.MultipartChunk) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Compose", ctx, path, chunks)
+	ret := m.ctrl.Call(m, "CompleteMultipartUpload", ctx, path, uploadId, chunks)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Compose indicates an expected call of Compose.
-func (mr *MockLocalStorageMockRecorder) Compose(ctx, path, chunks any) *gomock.Call {
+// CompleteMultipartUpload indicates an expected call of CompleteMultipartUpload.
+func (mr *MockLocalStorageMockRecorder) CompleteMultipartUpload(ctx, path, uploadId, chunks any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Compose", reflect.TypeOf((*MockLocalStorage)(nil).Compose), ctx, path, chunks)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteMultipartUpload", reflect.TypeOf((*MockLocalStorage)(nil).CompleteMultipartUpload), ctx, path, uploadId, chunks)
+}
+
+// CreateMultipartUpload mocks base method.
+func (m *MockLocalStorage) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateMultipartUpload", ctx, path)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateMultipartUpload indicates an expected call of CreateMultipartUpload.
+func (mr *MockLocalStorageMockRecorder) CreateMultipartUpload(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateMultipartUpload", reflect.TypeOf((*MockLocalStorage)(nil).CreateMultipartUpload), ctx, path)
 }
 
 // DeleteDir mocks base method.
@@ -201,6 +230,21 @@ func (mr *MockLocalStorageMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockLocalStorage)(nil).ReadFile), ctx, path)
 }
 
+// UploadMultipartChunk mocks base method.
+func (m *MockLocalStorage) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UploadMultipartChunk", ctx, path, uploadId, chunkNumber, body, size)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UploadMultipartChunk indicates an expected call of UploadMultipartChunk.
+func (mr *MockLocalStorageMockRecorder) UploadMultipartChunk(ctx, path, uploadId, chunkNumber, body, size any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UploadMultipartChunk", reflect.TypeOf((*MockLocalStorage)(nil).UploadMultipartChunk), ctx, path, uploadId, chunkNumber, body, size)
+}
+
 // Write mocks base method.
 func (m *MockLocalStorage) Write(ctx context.Context, path string, file io.Reader) error {
 	m.ctrl.T.Helper()
@@ -253,6 +297,20 @@ func (m *MockLocalStorageProvider) EXPECT() *MockLocalStorageProviderMockRecorde
 	return m.recorder
 }
 
+// AbortMultipartUpload mocks base method.
+func (m *MockLocalStorageProvider) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AbortMultipartUpload", ctx, path, uploadId)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AbortMultipartUpload indicates an expected call of AbortMultipartUpload.
+func (mr *MockLocalStorageProviderMockRecorder) AbortMultipartUpload(ctx, path, uploadId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AbortMultipartUpload", reflect.TypeOf((*MockLocalStorageProvider)(nil).AbortMultipartUpload), ctx, path, uploadId)
+}
+
 // Close mocks base method.
 func (m *MockLocalStorageProvider) Close() error {
 	m.ctrl.T.Helper()
@@ -267,18 +325,33 @@ func (mr *MockLocalStorageProviderMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockLocalStorageProvider)(nil).Close))
 }
 
-// Compose mocks base method.
-func (m *MockLocalStorageProvider) Compose(ctx context.Context, path string, chunks []string) error {
+// CompleteMultipartUpload mocks base method.
+func (m *MockLocalStorageProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []storage.MultipartChunk) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Compose", ctx, path, chunks)
+	ret := m.ctrl.Call(m, "CompleteMultipartUpload", ctx, path, uploadId, chunks)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Compose indicates an expected call of Compose.
-func (mr *MockLocalStorageProviderMockRecorder) Compose(ctx, path, chunks any) *gomock.Call {
+// CompleteMultipartUpload indicates an expected call of CompleteMultipartUpload.
+func (mr *MockLocalStorageProviderMockRecorder) CompleteMultipartUpload(ctx, path, uploadId, chunks any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Compose", reflect.TypeOf((*MockLocalStorageProvider)(nil).Compose), ctx, path, chunks)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteMultipartUpload", reflect.TypeOf((*MockLocalStorageProvider)(nil).CompleteMultipartUpload), ctx, path, uploadId, chunks)
+}
+
+// CreateMultipartUpload mocks base method.
+func (m *MockLocalStorageProvider) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateMultipartUpload", ctx, path)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateMultipartUpload indicates an expected call of CreateMultipartUpload.
+func (mr *MockLocalStorageProviderMockRecorder) CreateMultipartUpload(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateMultipartUpload", reflect.TypeOf((*MockLocalStorageProvider)(nil).CreateMultipartUpload), ctx, path)
 }
 
 // DeleteDir mocks base method.
@@ -381,6 +454,21 @@ func (m *MockLocalStorageProvider) ReadFile(ctx context.Context, path string) (i
 func (mr *MockLocalStorageProviderMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockLocalStorageProvider)(nil).ReadFile), ctx, path)
+}
+
+// UploadMultipartChunk mocks base method.
+func (m *MockLocalStorageProvider) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UploadMultipartChunk", ctx, path, uploadId, chunkNumber, body, size)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UploadMultipartChunk indicates an expected call of UploadMultipartChunk.
+func (mr *MockLocalStorageProviderMockRecorder) UploadMultipartChunk(ctx, path, uploadId, chunkNumber, body, size any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UploadMultipartChunk", reflect.TypeOf((*MockLocalStorageProvider)(nil).UploadMultipartChunk), ctx, path, uploadId, chunkNumber, body, size)
 }
 
 // Write mocks base method.

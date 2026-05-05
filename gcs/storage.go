@@ -48,8 +48,20 @@ func (p *StorageProvider) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
-func (p *StorageProvider) Compose(ctx context.Context, path string, chunks []string) error {
-	return p.gcs.Compose(ctx, path, chunks)
+func (p *StorageProvider) CreateMultipartUpload(ctx context.Context, path string) (string, error) {
+	return p.gcs.CreateMultipartUpload(ctx, path)
+}
+
+func (p *StorageProvider) UploadMultipartChunk(ctx context.Context, path, uploadId string, chunkNumber int, body io.Reader, size int64) (string, error) {
+	return p.gcs.UploadMultipartChunk(ctx, path, uploadId, chunkNumber, body, size)
+}
+
+func (p *StorageProvider) CompleteMultipartUpload(ctx context.Context, path, uploadId string, chunks []storage.MultipartChunk) error {
+	return p.gcs.CompleteMultipartUpload(ctx, path, uploadId, chunks)
+}
+
+func (p *StorageProvider) AbortMultipartUpload(ctx context.Context, path, uploadId string) error {
+	return p.gcs.AbortMultipartUpload(ctx, path, uploadId)
 }
 
 func (p *StorageProvider) GetPublicUrl(ctx context.Context, path string) (string, error) {
