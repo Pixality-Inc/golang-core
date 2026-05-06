@@ -6,11 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -35,17 +32,8 @@ const DefaultUploadPartSize int64 = 16 * 1024 * 1024
 // DefaultUploadConcurrency is the default number of concurrent parts uploaded.
 const DefaultUploadConcurrency = 4
 
-// abortMultipartTimeout bounds the best-effort cleanup of a failed multipart
-// upload. It runs on a fresh context so the abort still fires when the caller's
-// ctx was the reason the upload failed (e.g. cancellation). Without this, a
-// canceled Compose would leak the multipart upload on the bucket.
-const abortMultipartTimeout = 30 * time.Second
-
-// ErrChunkTooSmall is returned by Compose when a non-last chunk is smaller than MinPartSize.
-var ErrChunkTooSmall = errors.New("s3: non-last compose chunk smaller than MinPartSize")
-
-// ErrNoChunks is returned by Compose when the caller passes an empty chunks slice.
-var ErrNoChunks = errors.New("s3: compose called with no chunks")
+// ErrNoChunks is returned by CompleteMultipartUpload when the caller passes an empty chunks slice.
+var ErrNoChunks = errors.New("s3: complete multipart called with no chunks")
 
 // ErrBulkDelete is returned by DeleteDir when the S3 API succeeded at the
 // request level but reported per-object errors in the response.
@@ -72,7 +60,10 @@ type Client interface {
 
 	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
 
-	Compose(ctx context.Context, objectName string, chunks []string) error
+	CreateMultipartUpload(ctx context.Context, objectName string) (storage.MultipartUpload, error)
+	UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error)
+	CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error
+	AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error
 
 	GetPublicUrl(ctx context.Context, objectName string) (string, error)
 }
@@ -385,15 +376,56 @@ func (c *Impl) GetPublicUrl(_ context.Context, objectName string) (string, error
 	return fmt.Sprintf("%s/%s", c.basePublicUrl, objectFullName), nil
 }
 
-type composeSource struct {
-	fullName string
-	size     int64
-}
-
-func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) error {
+func (c *Impl) CreateMultipartUpload(ctx context.Context, objectName string) (storage.MultipartUpload, error) {
 	log := c.log.GetLogger(ctx)
 
-	log.Infof("Composing object '%s' from %d chunks", objectName, len(chunks))
+	log.Infof("Creating multipart upload for '%s'", objectName)
+
+	if err := c.init(ctx); err != nil {
+		return nil, err
+	}
+
+	targetFullName := c.getObjectFullName(objectName)
+
+	mpu, err := c.client.CreateMultipartUpload(ctx, &awss3.CreateMultipartUploadInput{
+		Bucket: aws.String(c.bucketName),
+		Key:    aws.String(targetFullName),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3: create multipart for '%s': %w", targetFullName, err)
+	}
+
+	return storage.NewMultipartUpload(aws.ToString(mpu.UploadId)), nil
+}
+
+func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error) {
+	if err := c.init(ctx); err != nil {
+		return nil, err
+	}
+
+	targetFullName := c.getObjectFullName(objectName)
+
+	partNum := int32(chunkNumber) //nolint:gosec // S3 caps parts at 10000; int→int32 safe for valid input.
+
+	out, err := c.client.UploadPart(ctx, &awss3.UploadPartInput{
+		Bucket:        aws.String(c.bucketName),
+		Key:           aws.String(targetFullName),
+		UploadId:      aws.String(upload.Id()),
+		PartNumber:    aws.Int32(partNum),
+		Body:          body,
+		ContentLength: aws.Int64(size),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3: upload-part %d for '%s': %w", partNum, targetFullName, err)
+	}
+
+	return storage.NewMultipartChunk(chunkNumber, aws.ToString(out.ETag)), nil
+}
+
+func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
+	log := c.log.GetLogger(ctx)
+
+	log.Infof("Completing multipart upload '%s' with %d chunks", objectName, len(chunks))
 
 	if len(chunks) == 0 {
 		return fmt.Errorf("%w: '%s'", ErrNoChunks, objectName)
@@ -405,142 +437,45 @@ func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) 
 
 	targetFullName := c.getObjectFullName(objectName)
 
-	sources := make([]composeSource, 0, len(chunks))
+	completed := make([]types.CompletedPart, 0, len(chunks))
 	for _, chunk := range chunks {
-		full := c.getObjectFullName(chunk)
-
-		head, err := c.client.HeadObject(ctx, &awss3.HeadObjectInput{
-			Bucket: aws.String(c.bucketName),
-			Key:    aws.String(full),
-		})
-		if err != nil {
-			return fmt.Errorf("s3: head chunk '%s': %w", full, err)
-		}
-
-		sources = append(sources, composeSource{
-			fullName: full,
-			size:     aws.ToInt64(head.ContentLength),
-		})
-	}
-
-	// Case A: single source -> CopyObject
-	if len(sources) == 1 {
-		return c.copyObject(ctx, sources[0].fullName, targetFullName)
-	}
-
-	// Validate non-last sizes
-	for i := range len(sources) - 1 {
-		if sources[i].size < MinPartSize {
-			return fmt.Errorf(
-				"%w: chunk %d ('%s') is %d bytes, target '%s' minimum %d",
-				ErrChunkTooSmall, i, sources[i].fullName, sources[i].size, targetFullName, MinPartSize,
-			)
-		}
-	}
-
-	return c.composeMultipart(ctx, targetFullName, sources)
-}
-
-func (c *Impl) copyObject(ctx context.Context, sourceFullName, targetFullName string) error {
-	copySource := buildCopySource(c.bucketName, sourceFullName)
-
-	_, err := c.client.CopyObject(ctx, &awss3.CopyObjectInput{
-		Bucket:     aws.String(c.bucketName),
-		Key:        aws.String(targetFullName),
-		CopySource: aws.String(copySource),
-	})
-	if err != nil {
-		return fmt.Errorf("s3: copy '%s' -> '%s': %w", sourceFullName, targetFullName, err)
-	}
-
-	return nil
-}
-
-func (c *Impl) composeMultipart(ctx context.Context, targetFullName string, sources []composeSource) error {
-	log := c.log.GetLogger(ctx)
-
-	mpu, err := c.client.CreateMultipartUpload(ctx, &awss3.CreateMultipartUploadInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(targetFullName),
-	})
-	if err != nil {
-		return fmt.Errorf("s3: create multipart for '%s': %w", targetFullName, err)
-	}
-
-	uploadId := mpu.UploadId
-	committed := false
-
-	//nolint:contextcheck // intentional: abort uses a detached ctx so it fires even when caller canceled.
-	defer func() {
-		if committed {
-			return
-		}
-
-		abortCtx, cancel := context.WithTimeout(context.Background(), abortMultipartTimeout)
-		defer cancel()
-
-		_, abortErr := c.client.AbortMultipartUpload(abortCtx, &awss3.AbortMultipartUploadInput{
-			Bucket:   aws.String(c.bucketName),
-			Key:      aws.String(targetFullName),
-			UploadId: uploadId,
-		})
-		if abortErr != nil {
-			log.WithError(abortErr).Errorf("s3: abort multipart '%s' failed", targetFullName)
-		}
-	}()
-
-	completed := make([]types.CompletedPart, 0, len(sources))
-
-	for i, src := range sources {
-		partNum := int32(i + 1) //nolint:gosec // S3 caps parts at 10000; int→int32 safe.
-
-		etag, err := c.uploadCopyPart(ctx, targetFullName, uploadId, partNum, src.fullName)
-		if err != nil {
-			return err
-		}
-
+		partNum := int32(chunk.Number()) //nolint:gosec
 		completed = append(completed, types.CompletedPart{
 			PartNumber: aws.Int32(partNum),
-			ETag:       etag,
+			ETag:       aws.String(chunk.ETag()),
 		})
 	}
 
-	_, err = c.client.CompleteMultipartUpload(ctx, &awss3.CompleteMultipartUploadInput{
+	_, err := c.client.CompleteMultipartUpload(ctx, &awss3.CompleteMultipartUploadInput{
 		Bucket:          aws.String(c.bucketName),
 		Key:             aws.String(targetFullName),
-		UploadId:        uploadId,
+		UploadId:        aws.String(upload.Id()),
 		MultipartUpload: &types.CompletedMultipartUpload{Parts: completed},
 	})
 	if err != nil {
 		return fmt.Errorf("s3: complete multipart for '%s': %w", targetFullName, err)
 	}
 
-	committed = true
-
 	return nil
 }
 
-func (c *Impl) uploadCopyPart(
-	ctx context.Context,
-	targetFullName string,
-	uploadId *string,
-	partNum int32,
-	sourceFullName string,
-) (*string, error) {
-	copySource := buildCopySource(c.bucketName, sourceFullName)
-
-	out, err := c.client.UploadPartCopy(ctx, &awss3.UploadPartCopyInput{
-		Bucket:     aws.String(c.bucketName),
-		Key:        aws.String(targetFullName),
-		UploadId:   uploadId,
-		PartNumber: aws.Int32(partNum),
-		CopySource: aws.String(copySource),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("s3: upload-part-copy %d for '%s': %w", partNum, targetFullName, err)
+func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error {
+	if err := c.init(ctx); err != nil {
+		return err
 	}
 
-	return out.CopyPartResult.ETag, nil
+	targetFullName := c.getObjectFullName(objectName)
+
+	_, err := c.client.AbortMultipartUpload(ctx, &awss3.AbortMultipartUploadInput{
+		Bucket:   aws.String(c.bucketName),
+		Key:      aws.String(targetFullName),
+		UploadId: aws.String(upload.Id()),
+	})
+	if err != nil {
+		return fmt.Errorf("s3: abort multipart for '%s': %w", targetFullName, err)
+	}
+
+	return nil
 }
 
 func (c *Impl) init(ctx context.Context) error {
@@ -585,11 +520,4 @@ func (c *Impl) getObjectFullName(objectName string) string {
 	}
 
 	return objectName
-}
-
-// buildCopySource returns the value for the x-amz-copy-source header:
-// "{bucket}/{key}" with the key URL-escaped but slashes preserved, and the
-// bucket/key separator left as a literal '/' so S3 can split on it.
-func buildCopySource(bucket, key string) string {
-	return bucket + "/" + strings.ReplaceAll(url.PathEscape(key), "%2F", "/")
 }

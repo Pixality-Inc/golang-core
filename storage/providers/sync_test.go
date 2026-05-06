@@ -238,80 +238,46 @@ func TestSyncStorage_ReadDir_mismatchFileVsDirSameName(t *testing.T) {
 	require.ErrorIs(t, err, ErrStorageFailed)
 }
 
-func TestSyncStorage_Compose_noChunks(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	syncStore, _, _ := newDualOsSyncStorage(t)
-
-	err := syncStore.Compose(ctx, "out.bin", nil)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrNoChunksProvided)
-
-	err = syncStore.Compose(ctx, "out.bin", []string{})
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrNoChunksProvided)
-}
-
-func TestSyncStorage_Compose_singleChunk_renames(t *testing.T) {
+func TestSyncStorage_Multipart_replicatesToBothRoots(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	syncStore, root1, root2 := newDualOsSyncStorage(t)
 
+	upload, err := syncStore.CreateMultipartUpload(ctx, "merged.txt")
+	require.NoError(t, err)
+	require.NotEmpty(t, upload.Id())
+
+	chunk1, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", upload, 1, bytes.NewReader([]byte("aa")), 2)
+	require.NoError(t, err)
+	chunk2, err := syncStore.UploadMultipartChunk(ctx, "merged.txt", upload, 2, bytes.NewReader([]byte("bb")), 2)
+	require.NoError(t, err)
+
+	require.NoError(t, syncStore.CompleteMultipartUpload(ctx, "merged.txt", upload, []storage.MultipartChunk{
+		chunk1, chunk2,
+	}))
+
+	requireSameFileOnBothRoots(t, root1, root2, "merged.txt", []byte("aabb"))
+}
+
+func TestSyncStorage_Multipart_abort_cleansBothRoots(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	syncStore, root1, root2 := newDualOsSyncStorage(t)
+
+	upload, err := syncStore.CreateMultipartUpload(ctx, "out.txt")
+	require.NoError(t, err)
+
+	_, err = syncStore.UploadMultipartChunk(ctx, "out.txt", upload, 1, bytes.NewReader([]byte("x")), 1)
+	require.NoError(t, err)
+
+	require.NoError(t, syncStore.AbortMultipartUpload(ctx, "out.txt", upload))
+
 	for _, root := range []string{root1, root2} {
-		require.NoError(t, os.WriteFile(filepath.Join(root, "chunk0"), []byte("only"), 0o600))
-	}
-
-	require.NoError(t, syncStore.Compose(ctx, "final/out.txt", []string{"chunk0"}))
-
-	want := []byte("only")
-	requireSameFileOnBothRoots(t, root1, root2, filepath.Join("final", "out.txt"), want)
-
-	for _, root := range []string{root1, root2} {
-		_, err := os.Stat(filepath.Join(root, "chunk0"))
+		_, err = os.Stat(filepath.Join(root, "out.txt.parts"))
 		require.True(t, os.IsNotExist(err))
 	}
-}
-
-func TestSyncStorage_Compose_multipleChunks_concatenates(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	syncStore, root1, root2 := newDualOsSyncStorage(t)
-
-	for _, root := range []string{root1, root2} {
-		require.NoError(t, os.WriteFile(filepath.Join(root, "c1"), []byte("aa"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(root, "c2"), []byte("bb"), 0o600))
-		require.NoError(t, os.WriteFile(filepath.Join(root, "c3"), []byte("cc"), 0o600))
-	}
-
-	require.NoError(t, syncStore.Compose(ctx, "merged.txt", []string{"c1", "c2", "c3"}))
-
-	want := []byte("aabbcc")
-	requireSameFileOnBothRoots(t, root1, root2, "merged.txt", want)
-
-	for _, root := range []string{root1, root2} {
-		for _, c := range []string{"c1", "c2", "c3"} {
-			_, err := os.Stat(filepath.Join(root, c))
-			require.True(t, os.IsNotExist(err))
-		}
-	}
-}
-
-func TestSyncStorage_Compose_chunkMissing_wrapsErrChunkProcess(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	syncStore, root1, root2 := newDualOsSyncStorage(t)
-
-	for _, root := range []string{root1, root2} {
-		require.NoError(t, os.WriteFile(filepath.Join(root, "ok"), []byte("x"), 0o600))
-	}
-
-	err := syncStore.Compose(ctx, "out.txt", []string{"ok", "missing"})
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrChunkProcess)
 }
 
 func TestSyncStorage_Close_nilError(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/pixality-inc/golang-core/logger"
 	storage "github.com/pixality-inc/golang-core/storage"
 
@@ -15,6 +16,19 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
+
+// gcsMaxComposeSources is the GCS Compose API limit on the number of source
+// objects per call. Larger uploads are composed in two passes via group
+// objects.
+const gcsMaxComposeSources = 32
+
+// multipartPartsSuffix is appended to the target objectName to form the
+// prefix that holds in-progress multipart chunks. The prefix is removed on
+// CompleteMultipartUpload or AbortMultipartUpload.
+const multipartPartsSuffix = ".parts"
+
+// ErrNoChunks is returned by CompleteMultipartUpload when the caller passes an empty chunks slice.
+var ErrNoChunks = errors.New("gcs: complete multipart called with no chunks")
 
 type Client interface {
 	Close()
@@ -35,7 +49,10 @@ type Client interface {
 
 	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
 
-	Compose(ctx context.Context, objectName string, chunks []string) error
+	CreateMultipartUpload(ctx context.Context, objectName string) (storage.MultipartUpload, error)
+	UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error)
+	CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error
+	AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error
 
 	GetPublicUrl(ctx context.Context, objectName string) (string, error)
 }
@@ -273,27 +290,51 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (*gcs.ObjectAt
 	return attrs, true, nil
 }
 
-func (c *Impl) Compose(ctx context.Context, objectName string, chunks []string) error {
-	c.log.GetLogger(ctx).Infof("Composing object '%s' from %d chunks", objectName, len(chunks))
+func (c *Impl) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {
+	return storage.NewMultipartUpload(uuid.New().String()), nil
+}
+
+func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, _ int64) (storage.MultipartChunk, error) {
+	chunkPath := c.multipartChunkPath(objectName, upload.Id(), chunkNumber)
+
+	if err := c.Upload(ctx, chunkPath, body); err != nil {
+		return nil, fmt.Errorf("gcs: upload chunk %d for '%s': %w", chunkNumber, objectName, err)
+	}
+
+	return storage.NewMultipartChunk(chunkNumber, chunkPath), nil
+}
+
+func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
+	log := c.log.GetLogger(ctx)
+	log.Infof("Completing multipart upload '%s' with %d chunks", objectName, len(chunks))
+
+	if len(chunks) == 0 {
+		return fmt.Errorf("%w: '%s'", ErrNoChunks, objectName)
+	}
 
 	if err := c.init(ctx); err != nil {
 		return err
 	}
 
-	bucket := c.client.Bucket(c.bucketName)
-
-	objectFullName := c.getObjectFullName(objectName)
-
-	chunkObjects := make([]*gcs.ObjectHandle, len(chunks))
-
-	for n, chunk := range chunks {
-		chunkObjectFullName := c.getObjectFullName(chunk)
-		chunkObjects[n] = bucket.Object(chunkObjectFullName)
+	chunkPaths := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		chunkPaths = append(chunkPaths, c.multipartChunkPath(objectName, upload.Id(), chunk.Number()))
 	}
 
-	_, err := bucket.Object(objectFullName).ComposerFrom(chunkObjects...).Run(ctx)
-	if err != nil {
+	if err := c.composeAll(ctx, objectName, upload.Id(), chunkPaths); err != nil {
 		return err
+	}
+
+	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, upload.Id())); err != nil {
+		log.WithError(err).Errorf("gcs: failed to clean parts dir for '%s/%s'", objectName, upload.Id())
+	}
+
+	return nil
+}
+
+func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload) error {
+	if err := c.DeleteDir(ctx, c.multipartUploadDir(objectName, upload.Id())); err != nil {
+		return fmt.Errorf("gcs: abort multipart for '%s/%s': %w", objectName, upload.Id(), err)
 	}
 
 	return nil
@@ -309,6 +350,59 @@ func (c *Impl) GetPublicUrl(ctx context.Context, objectName string) (string, err
 	url := fmt.Sprintf("%s/%s", c.basePublicUrl, objectFullName)
 
 	return url, nil
+}
+
+// composeAll handles the GCS 32-sources-per-Compose limit by composing
+// chunks into intermediate group objects first, then composing the groups
+// into the target. Single-pass when the chunk count fits the limit.
+func (c *Impl) composeAll(ctx context.Context, objectName, uploadId string, chunkPaths []string) error {
+	if len(chunkPaths) <= gcsMaxComposeSources {
+		return c.composeOnce(ctx, objectName, chunkPaths)
+	}
+
+	groupPaths := make([]string, 0, (len(chunkPaths)+gcsMaxComposeSources-1)/gcsMaxComposeSources)
+
+	for groupId := 0; groupId*gcsMaxComposeSources < len(chunkPaths); groupId++ {
+		startIdx := groupId * gcsMaxComposeSources
+
+		endIdx := min(startIdx+gcsMaxComposeSources, len(chunkPaths))
+
+		groupPath := fmt.Sprintf("%s/group_%d", c.multipartUploadDir(objectName, uploadId), groupId)
+
+		if err := c.composeOnce(ctx, groupPath, chunkPaths[startIdx:endIdx]); err != nil {
+			return fmt.Errorf("gcs: compose group %d: %w", groupId, err)
+		}
+
+		groupPaths = append(groupPaths, groupPath)
+	}
+
+	return c.composeOnce(ctx, objectName, groupPaths)
+}
+
+func (c *Impl) composeOnce(ctx context.Context, targetName string, sourceNames []string) error {
+	bucket := c.client.Bucket(c.bucketName)
+
+	targetFullName := c.getObjectFullName(targetName)
+
+	sourceObjects := make([]*gcs.ObjectHandle, len(sourceNames))
+
+	for i, name := range sourceNames {
+		sourceObjects[i] = bucket.Object(c.getObjectFullName(name))
+	}
+
+	if _, err := bucket.Object(targetFullName).ComposerFrom(sourceObjects...).Run(ctx); err != nil {
+		return fmt.Errorf("gcs: compose '%s' from %d sources: %w", targetFullName, len(sourceNames), err)
+	}
+
+	return nil
+}
+
+func (c *Impl) multipartUploadDir(objectName, uploadId string) string {
+	return objectName + multipartPartsSuffix + "/" + uploadId
+}
+
+func (c *Impl) multipartChunkPath(objectName, uploadId string, chunkNumber int) string {
+	return fmt.Sprintf("%s/%d", c.multipartUploadDir(objectName, uploadId), chunkNumber)
 }
 
 func (c *Impl) init(ctx context.Context) error {
@@ -332,7 +426,7 @@ func (c *Impl) init(ctx context.Context) error {
 func (c *Impl) getObjectFullName(objectName string) string {
 	if c.baseDir != "" {
 		return c.baseDir + "/" + objectName
-	} else {
-		return objectName
 	}
+
+	return objectName
 }

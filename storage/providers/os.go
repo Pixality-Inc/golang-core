@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/storage"
 )
@@ -16,6 +17,11 @@ var (
 	ErrNoChunksProvided = errors.New("no chunks provided")
 	ErrChunkProcess     = errors.New("chunk process")
 )
+
+// multipartPartsSuffix is appended to the target path to form a sibling
+// directory that holds in-progress multipart chunks. The directory is
+// removed on Complete or Abort.
+const multipartPartsSuffix = ".parts"
 
 type OsProvider struct {
 	dir string
@@ -125,7 +131,21 @@ func (p *OsProvider) MkDir(_ context.Context, path string) error {
 	return nil
 }
 
-func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) error {
+func (p *OsProvider) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {
+	return storage.NewMultipartUpload(uuid.New().String()), nil
+}
+
+func (p *OsProvider) UploadMultipartChunk(ctx context.Context, path string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, _ int64) (storage.MultipartChunk, error) {
+	chunkPath := p.multipartChunkPath(path, upload.Id(), chunkNumber)
+
+	if err := p.Write(ctx, chunkPath, body); err != nil {
+		return nil, fmt.Errorf("write chunk %d: %w", chunkNumber, err)
+	}
+
+	return storage.NewMultipartChunk(chunkNumber, chunkPath), nil
+}
+
+func (p *OsProvider) CompleteMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
 	log := logger.GetLogger(ctx)
 
 	if len(chunks) == 0 {
@@ -135,13 +155,8 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 	destPath := p.getFullPath(path)
 
 	destDir := filepath.Dir(destPath)
-
 	if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
 		return fmt.Errorf("create dir %s for file %s: %w", destDir, path, err)
-	}
-
-	if len(chunks) == 1 {
-		return os.Rename(p.getFullPath(chunks[0]), destPath)
 	}
 
 	tmpFile, err := os.CreateTemp(destDir, ".compose-*")
@@ -157,8 +172,8 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 		}
 	}()
 
-	copyChunkToTemp := func(chunkPath string) error {
-		sourcePath := p.getFullPath(chunkPath)
+	copyChunkToTemp := func(chunkNumber int) error {
+		sourcePath := p.getFullPath(p.multipartChunkPath(path, upload.Id(), chunkNumber))
 
 		chunkFile, err := os.Open(sourcePath)
 		if err != nil {
@@ -178,9 +193,9 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 		return nil
 	}
 
-	for _, chunkPath := range chunks {
-		if err = copyChunkToTemp(chunkPath); err != nil {
-			return fmt.Errorf("%w: %s: %w", ErrChunkProcess, chunkPath, err)
+	for _, chunk := range chunks {
+		if err = copyChunkToTemp(chunk.Number()); err != nil {
+			return fmt.Errorf("%w: chunk %d: %w", ErrChunkProcess, chunk.Number(), err)
 		}
 	}
 
@@ -196,10 +211,16 @@ func (p *OsProvider) Compose(ctx context.Context, path string, chunks []string) 
 		return fmt.Errorf("rename temp file to destination: %w", err)
 	}
 
-	for _, chunkPath := range chunks {
-		if rmErr := os.Remove(p.getFullPath(chunkPath)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
-			log.WithError(rmErr).Errorf("failed to remove chunk '%s' after compose", chunkPath)
-		}
+	if rmErr := p.cleanupMultipartDir(ctx, path, upload.Id()); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+		log.WithError(rmErr).Errorf("failed to clean parts dir for '%s/%s'", path, upload.Id())
+	}
+
+	return nil
+}
+
+func (p *OsProvider) AbortMultipartUpload(ctx context.Context, path string, upload storage.MultipartUpload) error {
+	if err := p.cleanupMultipartDir(ctx, path, upload.Id()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("abort multipart: %w", err)
 	}
 
 	return nil
@@ -211,6 +232,32 @@ func (p *OsProvider) Close() error {
 
 func (p *OsProvider) LocalPath(_ context.Context, path string) (string, error) {
 	return p.getFullPath(path), nil
+}
+
+// cleanupMultipartDir removes the per-upload parts directory and, if the
+// target's parts parent directory is now empty, removes that as well.
+// The parent removal is best-effort: a non-empty parent just stays.
+func (p *OsProvider) cleanupMultipartDir(ctx context.Context, path, uploadId string) error {
+	if err := p.DeleteDir(ctx, p.multipartUploadDir(path, uploadId)); err != nil {
+		return err
+	}
+
+	parentRel := path + multipartPartsSuffix
+	parentFull := p.getFullPath(parentRel)
+
+	if err := os.Remove(parentFull); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.GetLogger(ctx).WithError(err).Debugf("multipart parent dir '%s' not removed", parentRel)
+	}
+
+	return nil
+}
+
+func (p *OsProvider) multipartUploadDir(path, uploadId string) string {
+	return path + multipartPartsSuffix + "/" + uploadId
+}
+
+func (p *OsProvider) multipartChunkPath(path, uploadId string, chunkNumber int) string {
+	return fmt.Sprintf("%s/%d", p.multipartUploadDir(path, uploadId), chunkNumber)
 }
 
 func (p *OsProvider) getFullPath(path string) string {

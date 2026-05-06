@@ -17,49 +17,6 @@ import (
 
 var errTestDummy = errors.New("dummy inner transport error")
 
-func TestBuildCopySource(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name   string
-		bucket string
-		key    string
-		want   string
-	}{
-		{
-			name:   "plain ascii with slashes preserved",
-			bucket: "my-bucket",
-			key:    "dir/sub/file.bin",
-			want:   "my-bucket/dir/sub/file.bin",
-		},
-		{
-			name:   "unicode key is percent-encoded, slashes preserved",
-			bucket: "my-bucket",
-			key:    "dir/файл.bin",
-			want:   "my-bucket/dir/%D1%84%D0%B0%D0%B9%D0%BB.bin",
-		},
-		{
-			name:   "reserved chars are percent-encoded",
-			bucket: "my-bucket",
-			key:    "a b/c?d#e.bin",
-			want:   "my-bucket/a%20b/c%3Fd%23e.bin",
-		},
-		{
-			name:   "empty base dir key",
-			bucket: "my-bucket",
-			key:    "file.bin",
-			want:   "my-bucket/file.bin",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, buildCopySource(tc.bucket, tc.key))
-		})
-	}
-}
-
 func TestIsNotFoundErr(t *testing.T) {
 	t.Parallel()
 

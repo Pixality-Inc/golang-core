@@ -146,74 +146,112 @@ func TestOsProvider_ReadDir_notFound(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestOsProvider_Compose_noChunks(t *testing.T) {
+func TestOsProvider_CompleteMultipartUpload_noChunks(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	root := t.TempDir()
 	store := NewOsProvider(root)
 
-	err := store.Compose(ctx, "out.bin", nil)
+	err := store.CompleteMultipartUpload(ctx, "out.bin", storage.NewMultipartUpload("u1"), nil)
 	require.ErrorIs(t, err, ErrNoChunksProvided)
 
-	err = store.Compose(ctx, "out.bin", []string{})
+	err = store.CompleteMultipartUpload(ctx, "out.bin", storage.NewMultipartUpload("u1"), []storage.MultipartChunk{})
 	require.ErrorIs(t, err, ErrNoChunksProvided)
 }
 
-func TestOsProvider_Compose_singleChunk_renames(t *testing.T) {
+func TestOsProvider_Multipart_singleChunk(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	root := t.TempDir()
 	store := NewOsProvider(root)
 
-	require.NoError(t, os.WriteFile(filepath.Join(root, "chunk0"), []byte("only"), 0o600))
+	upload, err := store.CreateMultipartUpload(ctx, "final/out.txt")
+	require.NoError(t, err)
+	require.NotEmpty(t, upload.Id())
 
-	require.NoError(t, store.Compose(ctx, "final/out.txt", []string{"chunk0"}))
+	_, err = store.UploadMultipartChunk(ctx, "final/out.txt", upload, 1, bytes.NewReader([]byte("only")), 4)
+	require.NoError(t, err)
+
+	require.NoError(t, store.CompleteMultipartUpload(ctx, "final/out.txt", upload, []storage.MultipartChunk{
+		storage.NewMultipartChunk(1, ""),
+	}))
 
 	b, err := os.ReadFile(filepath.Join(root, "final", "out.txt"))
 	require.NoError(t, err)
 	require.Equal(t, "only", string(b))
 
-	_, err = os.Stat(filepath.Join(root, "chunk0"))
+	_, err = os.Stat(filepath.Join(root, "final/out.txt.parts"))
 	require.True(t, os.IsNotExist(err))
 }
 
-func TestOsProvider_Compose_multipleChunks_concatenates(t *testing.T) {
+func TestOsProvider_Multipart_multipleChunks_concatenated(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	root := t.TempDir()
 	store := NewOsProvider(root)
 
-	require.NoError(t, os.WriteFile(filepath.Join(root, "c1"), []byte("aa"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "c2"), []byte("bb"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "c3"), []byte("cc"), 0o600))
+	upload, err := store.CreateMultipartUpload(ctx, "merged.txt")
+	require.NoError(t, err)
 
-	require.NoError(t, store.Compose(ctx, "merged.txt", []string{"c1", "c2", "c3"}))
+	_, err = store.UploadMultipartChunk(ctx, "merged.txt", upload, 1, bytes.NewReader([]byte("aa")), 2)
+	require.NoError(t, err)
+	_, err = store.UploadMultipartChunk(ctx, "merged.txt", upload, 2, bytes.NewReader([]byte("bb")), 2)
+	require.NoError(t, err)
+	_, err = store.UploadMultipartChunk(ctx, "merged.txt", upload, 3, bytes.NewReader([]byte("cc")), 2)
+	require.NoError(t, err)
+
+	require.NoError(t, store.CompleteMultipartUpload(ctx, "merged.txt", upload, []storage.MultipartChunk{
+		storage.NewMultipartChunk(1, ""), storage.NewMultipartChunk(2, ""), storage.NewMultipartChunk(3, ""),
+	}))
 
 	b, err := os.ReadFile(filepath.Join(root, "merged.txt"))
 	require.NoError(t, err)
 	require.Equal(t, "aabbcc", string(b))
 
-	for _, c := range []string{"c1", "c2", "c3"} {
-		_, err = os.Stat(filepath.Join(root, c))
-		require.True(t, os.IsNotExist(err))
-	}
+	_, err = os.Stat(filepath.Join(root, "merged.txt.parts"))
+	require.True(t, os.IsNotExist(err))
 }
 
-func TestOsProvider_Compose_chunkMissing_wrapsErrChunkProcess(t *testing.T) {
+func TestOsProvider_Multipart_missingChunk_wrapsErrChunkProcess(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	root := t.TempDir()
 	store := NewOsProvider(root)
 
-	require.NoError(t, os.WriteFile(filepath.Join(root, "ok"), []byte("x"), 0o600))
+	upload, err := store.CreateMultipartUpload(ctx, "out.txt")
+	require.NoError(t, err)
 
-	err := store.Compose(ctx, "out.txt", []string{"ok", "missing"})
+	_, err = store.UploadMultipartChunk(ctx, "out.txt", upload, 1, bytes.NewReader([]byte("x")), 1)
+	require.NoError(t, err)
+
+	err = store.CompleteMultipartUpload(ctx, "out.txt", upload, []storage.MultipartChunk{
+		storage.NewMultipartChunk(1, ""), storage.NewMultipartChunk(2, ""),
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrChunkProcess)
+}
+
+func TestOsProvider_Multipart_abort_removesParts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewOsProvider(root)
+
+	upload, err := store.CreateMultipartUpload(ctx, "out.txt")
+	require.NoError(t, err)
+
+	_, err = store.UploadMultipartChunk(ctx, "out.txt", upload, 1, bytes.NewReader([]byte("x")), 1)
+	require.NoError(t, err)
+
+	require.NoError(t, store.AbortMultipartUpload(ctx, "out.txt", upload))
+
+	_, err = os.Stat(filepath.Join(root, "out.txt.parts"))
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestOsProvider_LocalPath_joinsRoot(t *testing.T) {
