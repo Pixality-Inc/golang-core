@@ -119,11 +119,13 @@ func (p *Impl) startWorker(ctx context.Context, id uint32) {
 		select {
 		case <-ctx.Done():
 			log.WithError(ctx.Err()).Warn("Context stopped")
+
 			return
 
 		case taskCtx, ok := <-p.channel:
 			if !ok {
 				log.Warn("Channel closed")
+
 				return
 			}
 
@@ -140,6 +142,7 @@ func (p *Impl) startWorker(ctx context.Context, id uint32) {
 			select {
 			case <-ctx.Done():
 				log.WithError(ctx.Err()).Warn("Context stopped")
+
 				return
 
 			case <-taskCtx.ctx.Done():

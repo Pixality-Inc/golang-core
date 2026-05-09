@@ -11,15 +11,15 @@ import (
 func TestPoolProcessesMultipleTasksWithSingleWorker(t *testing.T) {
 	t.Parallel()
 
-	p := New("test", 1)
+	poolExecutor := New("test", 1)
 
-	require.NoError(t, p.Start(t.Context()))
+	require.NoError(t, poolExecutor.Start(t.Context()))
 
 	values := make(chan int, 2)
 	executeErr := make(chan error, 1)
 
 	go func() {
-		executeErr <- p.Execute(
+		executeErr <- poolExecutor.Execute(
 			t.Context(),
 			func(_ context.Context) error {
 				values <- 1
@@ -37,20 +37,20 @@ func TestPoolProcessesMultipleTasksWithSingleWorker(t *testing.T) {
 	require.NoError(t, receiveError(t, executeErr))
 	require.Equal(t, 1, receiveValue(t, values))
 	require.Equal(t, 2, receiveValue(t, values))
-	require.NoError(t, p.Stop())
+	require.NoError(t, poolExecutor.Stop())
 }
 
 func TestPoolWorkerContinuesAfterTaskContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	p := New("test", 1)
+	poolExecutor := New("test", 1)
 
-	require.NoError(t, p.Start(t.Context()))
+	require.NoError(t, poolExecutor.Start(t.Context()))
 
 	taskCtx, cancelTask := context.WithCancel(t.Context())
 	started := make(chan struct{})
 
-	require.NoError(t, p.Execute(taskCtx, func(ctx context.Context) error {
+	require.NoError(t, poolExecutor.Execute(taskCtx, func(ctx context.Context) error {
 		close(started)
 
 		<-ctx.Done()
@@ -65,7 +65,7 @@ func TestPoolWorkerContinuesAfterTaskContextCancellation(t *testing.T) {
 	executeErr := make(chan error, 1)
 
 	go func() {
-		executeErr <- p.Execute(t.Context(), func(_ context.Context) error {
+		executeErr <- poolExecutor.Execute(t.Context(), func(_ context.Context) error {
 			values <- 1
 
 			return nil
@@ -74,7 +74,7 @@ func TestPoolWorkerContinuesAfterTaskContextCancellation(t *testing.T) {
 
 	require.NoError(t, receiveError(t, executeErr))
 	require.Equal(t, 1, receiveValue(t, values))
-	require.NoError(t, p.Stop())
+	require.NoError(t, poolExecutor.Stop())
 }
 
 func receiveError(t *testing.T, ch <-chan error) error {
