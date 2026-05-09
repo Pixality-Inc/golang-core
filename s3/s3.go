@@ -506,9 +506,17 @@ func (c *Impl) init(ctx context.Context) error {
 	})
 
 	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
-	c.uploader = manager.NewUploader(c.client, func(u *manager.Uploader) {
-		u.PartSize = DefaultUploadPartSize
-		u.Concurrency = DefaultUploadConcurrency
+	c.uploader = manager.NewUploader(c.client, func(uploader *manager.Uploader) {
+		uploader.PartSize = DefaultUploadPartSize
+		uploader.Concurrency = DefaultUploadConcurrency
+		// manager.NewUploader hardcodes WhenSupported regardless of the
+		// underlying s3.Client config or AWS_REQUEST_CHECKSUM_CALCULATION
+		// env var, so multipart UploadPart calls always emit a CRC32 trailer.
+		// Some S3-compatible backends (Hetzner Object Storage / Ceph RGW)
+		// occasionally reject those parts at the HTTP frontend with an opaque
+		// 400 BadRequest. Mirror the s3.Options value so the env var actually
+		// applies to multipart uploads. Upstream: aws/aws-sdk-go-v2#3007.
+		uploader.RequestChecksumCalculation = awsCfg.RequestChecksumCalculation
 	})
 
 	return nil
