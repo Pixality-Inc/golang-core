@@ -2,6 +2,8 @@ package future
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/pixality-inc/golang-core/either"
 	"github.com/pixality-inc/golang-core/logger"
@@ -17,15 +19,25 @@ type Future[T any] interface {
 type Impl[T any] struct {
 	promise promise.Promise[T]
 	body    func(ctx context.Context) (T, error)
+	options *Options
 }
 
-func New[T any](ctx context.Context, body func(ctx context.Context) (T, error)) Future[T] {
+func New[T any](
+	ctx context.Context,
+	body func(ctx context.Context) (T, error),
+	options ...Option,
+) Future[T] {
 	impl := &Impl[T]{
 		promise: promise.New[T](),
 		body:    body,
+		options: NewDefaultOptions(),
 	}
 
-	go impl.run(ctx)
+	for _, option := range options {
+		option(impl.options)
+	}
+
+	impl.execute(ctx)
 
 	return impl
 }
@@ -42,17 +54,26 @@ func (f *Impl[T]) IsResolved() bool {
 	return f.promise.IsResolved()
 }
 
-func (f *Impl[T]) run(ctx context.Context) {
+func (f *Impl[T]) execute(ctx context.Context) {
+	err := f.options.poolExecutor.Execute(ctx, f.run)
+	if err != nil {
+		logger.GetLogger(ctx).WithError(err).Error("failed to execute future with pool executor")
+	}
+}
+
+func (f *Impl[T]) run(ctx context.Context) error {
 	value, err := f.body(ctx)
 	if err != nil {
 		if rErr := f.promise.Reject(err); rErr != nil {
-			logger.GetLogger(ctx).WithError(rErr).Error("future reject")
+			return fmt.Errorf("future reject: %w", errors.Join(rErr, err))
 		}
 
-		return
+		return err
 	}
 
 	if rErr := f.promise.Resolve(value); rErr != nil {
-		logger.GetLogger(ctx).WithError(rErr).Error("future resolve")
+		return fmt.Errorf("future resolve: %w", rErr)
 	}
+
+	return nil
 }
