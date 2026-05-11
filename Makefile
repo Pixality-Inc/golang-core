@@ -16,4 +16,4 @@ test:
 
 .PHONY: lint
 lint:
-	golangci-lint run --tests
+	golangci-lint run --tests ./...
