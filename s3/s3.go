@@ -17,12 +17,12 @@ import (
 	"github.com/pixality-inc/golang-core/storage"
 )
 
-// MinPartSize is the S3 minimum part size for multipart uploads (5 MiB).
+// MinPartSize is the S3 minimum part size for multipart uploads (16 MiB).
 // All parts of a multipart upload except the very last one must be >= MinPartSize.
-const MinPartSize int64 = 5 * 1024 * 1024
+const MinPartSize int64 = 16 * 1024 * 1024
 
 // DefaultUploadPartSize is the default part size used by PutObject for auto-multipart.
-const DefaultUploadPartSize int64 = 16 * 1024 * 1024
+const DefaultUploadPartSize int64 = 64 * 1024 * 1024
 
 // DefaultUploadConcurrency is the default number of concurrent parts uploaded.
 const DefaultUploadConcurrency = 4
