@@ -6,28 +6,24 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
-	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/pixality-inc/golang-core/storage"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/pixality-inc/golang-core/logger"
+	"github.com/pixality-inc/golang-core/storage"
 )
 
-// MinPartSize is the S3 minimum part size for multipart uploads (5 MiB).
+// MinPartSize is the S3 minimum part size for multipart uploads (16 MiB).
 // All parts of a multipart upload except the very last one must be >= MinPartSize.
-const MinPartSize int64 = 5 * 1024 * 1024
+const MinPartSize int64 = 16 * 1024 * 1024
 
-// DefaultUploadPartSize is the default part size used by the s3 manager Uploader.
-const DefaultUploadPartSize int64 = 16 * 1024 * 1024
+// DefaultUploadPartSize is the default part size used by PutObject for auto-multipart.
+const DefaultUploadPartSize int64 = 64 * 1024 * 1024
 
 // DefaultUploadConcurrency is the default number of concurrent parts uploaded.
 const DefaultUploadConcurrency = 4
@@ -35,14 +31,23 @@ const DefaultUploadConcurrency = 4
 // ErrNoChunks is returned by CompleteMultipartUpload when the caller passes an empty chunks slice.
 var ErrNoChunks = errors.New("s3: complete multipart called with no chunks")
 
-// ErrBulkDelete is returned by DeleteDir when the S3 API succeeded at the
-// request level but reported per-object errors in the response.
+// ErrBulkDelete is returned by DeleteDir when the bulk delete reported per-object errors.
 var ErrBulkDelete = errors.New("s3: bulk delete reported per-object errors")
 
 // ErrEmptyDeletePrefix is returned by DeleteDir when both baseDir and the
 // caller-supplied objectName are empty. Proceeding would list every key in
 // the bucket and delete all of them — almost always a misconfiguration.
 var ErrEmptyDeletePrefix = errors.New("s3: refusing DeleteDir with empty prefix (would wipe the whole bucket)")
+
+// ErrEmptyEndpoint is returned by init when the caller passed no endpoint.
+// minio-go would otherwise default to AWS, which is virtually never the
+// intent for the S3-compatible providers this package targets.
+var ErrEmptyEndpoint = errors.New("s3: empty endpoint")
+
+// ErrInvalidEndpoint is returned by init when the caller passed an endpoint
+// minio-go cannot use directly: unsupported scheme, or a URL carrying a
+// path / query / fragment that we would otherwise have to silently drop.
+var ErrInvalidEndpoint = errors.New("s3: invalid endpoint")
 
 type Client interface {
 	Close()
@@ -81,10 +86,8 @@ type Impl struct {
 	secretKey    string
 	usePathStyle bool
 
-	client *awss3.Client
-	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch; migrate to transfermanager later.
-	uploader *manager.Uploader
-	mutex    sync.Mutex
+	client *minio.Client
+	mutex  sync.Mutex
 }
 
 func NewClient(
@@ -123,7 +126,6 @@ func (c *Impl) Close() {
 	defer c.mutex.Unlock()
 
 	c.client = nil
-	c.uploader = nil
 }
 
 func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) error {
@@ -142,25 +144,14 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 		return fmt.Errorf("failed to get metadata for %q: %w", objectFullName, err)
 	}
 
-	object := &awss3.PutObjectInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(objectFullName),
-		Body:   file,
+	opts := minio.PutObjectOptions{
+		ContentType:     metadata.ContentType(),
+		ContentEncoding: metadata.ContentEncoding(),
+		PartSize:        uint64(DefaultUploadPartSize),
+		NumThreads:      uint(DefaultUploadConcurrency),
 	}
 
-	contentType := metadata.ContentType()
-	contentEncoding := metadata.ContentEncoding()
-
-	if contentType != "" {
-		object.ContentType = &contentType
-	}
-
-	if contentEncoding != "" {
-		object.ContentEncoding = &contentEncoding
-	}
-
-	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
-	if _, err = c.uploader.Upload(ctx, object); err != nil {
+	if _, err := c.client.PutObject(ctx, c.bucketName, objectFullName, file, -1, opts); err != nil {
 		return fmt.Errorf("s3: upload '%s': %w", objectFullName, err)
 	}
 
@@ -195,11 +186,7 @@ func (c *Impl) Delete(ctx context.Context, objectName string) error {
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	_, err := c.client.DeleteObject(ctx, &awss3.DeleteObjectInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(objectFullName),
-	})
-	if err != nil {
+	if err := c.client.RemoveObject(ctx, c.bucketName, objectFullName, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("s3: delete '%s': %w", objectFullName, err)
 	}
 
@@ -221,47 +208,74 @@ func (c *Impl) DeleteDir(ctx context.Context, objectName string) error {
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	paginator := awss3.NewListObjectsV2Paginator(c.client, &awss3.ListObjectsV2Input{
-		Bucket: aws.String(c.bucketName),
-		Prefix: aws.String(objectFullName),
+	listCh := c.client.ListObjects(ctx, c.bucketName, minio.ListObjectsOptions{
+		Prefix:    objectFullName,
+		Recursive: true,
 	})
 
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("s3: list '%s': %w", objectFullName, err)
+	// Filter list errors out of the stream so RemoveObjects only sees keys.
+	// listErrCh is buffered with cap 1 and written via a defer so we always
+	// signal the receiver below, even if ctx is canceled or RemoveObjects
+	// stops draining toDelete mid-flight (which would otherwise leak this
+	// goroutine on a blocked send).
+	toDelete := make(chan minio.ObjectInfo)
+	listErrCh := make(chan error, 1)
+
+	go func() {
+		var listErr error
+
+		defer func() {
+			close(toDelete)
+
+			listErrCh <- listErr
+		}()
+
+		for info := range listCh {
+			if info.Err != nil {
+				listErr = info.Err
+
+				return
+			}
+
+			select {
+			case toDelete <- info:
+			case <-ctx.Done():
+				listErr = ctx.Err()
+
+				return
+			}
+		}
+	}()
+
+	removeCh := c.client.RemoveObjects(ctx, c.bucketName, toDelete, minio.RemoveObjectsOptions{})
+
+	var (
+		firstRemoveErr *minio.RemoveObjectError
+		removeErrCount int
+	)
+
+	for re := range removeCh {
+		if firstRemoveErr == nil {
+			captured := re
+			firstRemoveErr = &captured
 		}
 
-		if len(page.Contents) == 0 {
-			continue
-		}
+		removeErrCount++
+	}
 
-		ids := make([]types.ObjectIdentifier, 0, len(page.Contents))
-		for _, obj := range page.Contents {
-			ids = append(ids, types.ObjectIdentifier{Key: obj.Key})
-		}
+	if listErr := <-listErrCh; listErr != nil {
+		return fmt.Errorf("s3: list '%s': %w", objectFullName, listErr)
+	}
 
-		resp, err := c.client.DeleteObjects(ctx, &awss3.DeleteObjectsInput{
-			Bucket: aws.String(c.bucketName),
-			Delete: &types.Delete{Objects: ids, Quiet: aws.Bool(true)},
-		})
-		if err != nil {
-			return fmt.Errorf("s3: bulk delete under '%s': %w", objectFullName, err)
-		}
-
-		if len(resp.Errors) > 0 {
-			first := resp.Errors[0]
-
-			return fmt.Errorf(
-				"%w: under '%s': %d errors, first key=%q code=%q message=%q",
-				ErrBulkDelete,
-				objectFullName,
-				len(resp.Errors),
-				aws.ToString(first.Key),
-				aws.ToString(first.Code),
-				aws.ToString(first.Message),
-			)
-		}
+	if firstRemoveErr != nil {
+		return fmt.Errorf(
+			"%w: under '%s': %d errors, first key=%q: %w",
+			ErrBulkDelete,
+			objectFullName,
+			removeErrCount,
+			firstRemoveErr.ObjectName,
+			firstRemoveErr.Err,
+		)
 	}
 
 	return nil
@@ -278,15 +292,21 @@ func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	out, err := c.client.GetObject(ctx, &awss3.GetObjectInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(objectFullName),
-	})
+	obj, err := c.client.GetObject(ctx, c.bucketName, objectFullName, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("s3: download '%s': %w", objectFullName, err)
 	}
 
-	return out.Body, nil
+	// minio-go's GetObject is lazy — the request fires on first Read/Stat.
+	// Force the round-trip now so callers see "not found" / auth errors here
+	// instead of in the middle of streaming the body.
+	if _, err := obj.Stat(); err != nil {
+		_ = obj.Close()
+
+		return nil, fmt.Errorf("s3: download '%s': %w", objectFullName, err)
+	}
+
+	return obj, nil
 }
 
 func (c *Impl) DownloadFile(ctx context.Context, objectName string, filename string) error {
@@ -330,10 +350,7 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (bool, error) 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	_, err := c.client.HeadObject(ctx, &awss3.HeadObjectInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(objectFullName),
-	})
+	_, err := c.client.StatObject(ctx, c.bucketName, objectFullName, minio.StatObjectOptions{})
 	if err != nil {
 		if isNotFoundErr(err) {
 			return false, nil
@@ -346,28 +363,20 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (bool, error) 
 }
 
 // isNotFoundErr reports whether err represents a 404 for an S3 object.
-// Covers AWS-typed NotFound, smithy APIError with code "NotFound"/"NoSuchKey",
-// and HTTP status 404 returned by S3-compatible endpoints (MinIO, Hetzner, etc.).
+// minio-go normalizes errors from AWS S3 / MinIO / Hetzner / etc. into
+// minio.ErrorResponse via ToErrorResponse — we accept NoSuchKey (S3 spec
+// code), NotFound (returned by some providers / for HEAD without body),
+// and a raw HTTP 404 status as the catch-all.
 func isNotFoundErr(err error) bool {
-	var nf *types.NotFound
-	if errors.As(err, &nf) {
-		return true
+	if err == nil {
+		return false
 	}
 
-	var httpErr *smithyhttp.ResponseError
-	if errors.As(err, &httpErr) && httpErr.HTTPStatusCode() == http.StatusNotFound {
-		return true
-	}
+	resp := minio.ToErrorResponse(err)
 
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.ErrorCode() {
-		case "NotFound", "NoSuchKey":
-			return true
-		}
-	}
-
-	return false
+	return resp.Code == "NoSuchKey" ||
+		resp.Code == "NotFound" ||
+		resp.StatusCode == http.StatusNotFound
 }
 
 func (c *Impl) GetPublicUrl(_ context.Context, objectName string) (string, error) {
@@ -387,15 +396,14 @@ func (c *Impl) CreateMultipartUpload(ctx context.Context, objectName string) (st
 
 	targetFullName := c.getObjectFullName(objectName)
 
-	mpu, err := c.client.CreateMultipartUpload(ctx, &awss3.CreateMultipartUploadInput{
-		Bucket: aws.String(c.bucketName),
-		Key:    aws.String(targetFullName),
-	})
+	core := minio.Core{Client: c.client}
+
+	uploadID, err := core.NewMultipartUpload(ctx, c.bucketName, targetFullName, minio.PutObjectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("s3: create multipart for '%s': %w", targetFullName, err)
 	}
 
-	return storage.NewMultipartUpload(aws.ToString(mpu.UploadId)), nil
+	return storage.NewMultipartUpload(uploadID), nil
 }
 
 func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error) {
@@ -405,21 +413,23 @@ func (c *Impl) UploadMultipartChunk(ctx context.Context, objectName string, uplo
 
 	targetFullName := c.getObjectFullName(objectName)
 
-	partNum := int32(chunkNumber) //nolint:gosec // S3 caps parts at 10000; int→int32 safe for valid input.
+	core := minio.Core{Client: c.client}
 
-	out, err := c.client.UploadPart(ctx, &awss3.UploadPartInput{
-		Bucket:        aws.String(c.bucketName),
-		Key:           aws.String(targetFullName),
-		UploadId:      aws.String(upload.Id()),
-		PartNumber:    aws.Int32(partNum),
-		Body:          body,
-		ContentLength: aws.Int64(size),
-	})
+	part, err := core.PutObjectPart(
+		ctx,
+		c.bucketName,
+		targetFullName,
+		upload.Id(),
+		chunkNumber,
+		body,
+		size,
+		minio.PutObjectPartOptions{},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("s3: upload-part %d for '%s': %w", partNum, targetFullName, err)
+		return nil, fmt.Errorf("s3: upload-part %d for '%s': %w", chunkNumber, targetFullName, err)
 	}
 
-	return storage.NewMultipartChunk(chunkNumber, aws.ToString(out.ETag)), nil
+	return storage.NewMultipartChunk(chunkNumber, part.ETag), nil
 }
 
 func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName string, upload storage.MultipartUpload, chunks []storage.MultipartChunk) error {
@@ -437,21 +447,17 @@ func (c *Impl) CompleteMultipartUpload(ctx context.Context, objectName string, u
 
 	targetFullName := c.getObjectFullName(objectName)
 
-	completed := make([]types.CompletedPart, 0, len(chunks))
+	parts := make([]minio.CompletePart, 0, len(chunks))
 	for _, chunk := range chunks {
-		partNum := int32(chunk.Number()) //nolint:gosec
-		completed = append(completed, types.CompletedPart{
-			PartNumber: aws.Int32(partNum),
-			ETag:       aws.String(chunk.ETag()),
+		parts = append(parts, minio.CompletePart{
+			PartNumber: chunk.Number(),
+			ETag:       chunk.ETag(),
 		})
 	}
 
-	_, err := c.client.CompleteMultipartUpload(ctx, &awss3.CompleteMultipartUploadInput{
-		Bucket:          aws.String(c.bucketName),
-		Key:             aws.String(targetFullName),
-		UploadId:        aws.String(upload.Id()),
-		MultipartUpload: &types.CompletedMultipartUpload{Parts: completed},
-	})
+	core := minio.Core{Client: c.client}
+
+	_, err := core.CompleteMultipartUpload(ctx, c.bucketName, targetFullName, upload.Id(), parts, minio.PutObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("s3: complete multipart for '%s': %w", targetFullName, err)
 	}
@@ -466,19 +472,19 @@ func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, uplo
 
 	targetFullName := c.getObjectFullName(objectName)
 
-	_, err := c.client.AbortMultipartUpload(ctx, &awss3.AbortMultipartUploadInput{
-		Bucket:   aws.String(c.bucketName),
-		Key:      aws.String(targetFullName),
-		UploadId: aws.String(upload.Id()),
-	})
-	if err != nil {
+	core := minio.Core{Client: c.client}
+
+	if err := core.AbortMultipartUpload(ctx, c.bucketName, targetFullName, upload.Id()); err != nil {
 		return fmt.Errorf("s3: abort multipart for '%s': %w", targetFullName, err)
 	}
 
 	return nil
 }
 
-func (c *Impl) init(ctx context.Context) error {
+// init is intentionally context-agnostic — minio.New does not perform a
+// round-trip, so there is nothing to cancel here. The ctx parameter is kept
+// on the signature only so call sites stay symmetric with the gcs sibling.
+func (c *Impl) init(_ context.Context) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -486,32 +492,67 @@ func (c *Impl) init(ctx context.Context) error {
 		return nil
 	}
 
-	awsCfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithRegion(c.region),
-		config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(c.accessKey, c.secretKey, ""),
-		),
-	)
+	host, secure, err := parseEndpoint(c.endpoint)
 	if err != nil {
-		return fmt.Errorf("s3: load aws config: %w", err)
+		return err
 	}
 
-	c.client = awss3.NewFromConfig(awsCfg, func(o *awss3.Options) {
-		if c.endpoint != "" {
-			o.BaseEndpoint = aws.String(c.endpoint)
-		}
+	opts := &minio.Options{
+		Creds:  credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
+		Secure: secure,
+		Region: c.region,
+	}
 
-		o.UsePathStyle = c.usePathStyle
-	})
+	if c.usePathStyle {
+		opts.BucketLookup = minio.BucketLookupPath
+	}
 
-	//nolint:staticcheck // SA1019: feature/s3/manager mandated by v0.6.14 patch.
-	c.uploader = manager.NewUploader(c.client, func(u *manager.Uploader) {
-		u.PartSize = DefaultUploadPartSize
-		u.Concurrency = DefaultUploadConcurrency
-	})
+	client, err := minio.New(host, opts)
+	if err != nil {
+		return fmt.Errorf("s3: init minio client: %w", err)
+	}
+
+	c.client = client
 
 	return nil
+}
+
+// parseEndpoint splits a caller-supplied endpoint into a host (no scheme) plus
+// a Secure flag, since minio.New takes them separately. We reject anything
+// the caller might have plausibly meant differently than what minio-go will
+// do with it: empty endpoint, non-http(s) scheme, or a URL with a path /
+// query / fragment that minio-go would silently ignore.
+func parseEndpoint(endpoint string) (string, bool, error) {
+	if endpoint == "" {
+		return "", false, ErrEmptyEndpoint
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", false, fmt.Errorf("s3: parse endpoint %q: %w", endpoint, err)
+	}
+
+	if parsed.Host == "" {
+		// No scheme; the whole string is treated as a bare host. Disallow
+		// anything that looks like a URL fragment we'd otherwise drop.
+		if strings.ContainsAny(endpoint, "/?#") {
+			return "", false, fmt.Errorf("%w: bare host must not contain path/query/fragment: %q", ErrInvalidEndpoint, endpoint)
+		}
+
+		return endpoint, true, nil
+	}
+
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return "", false, fmt.Errorf("%w: scheme must be http or https, got %q: %q", ErrInvalidEndpoint, parsed.Scheme, endpoint)
+	}
+
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false, fmt.Errorf("%w: must not contain path/query/fragment: %q", ErrInvalidEndpoint, endpoint)
+	}
+
+	return parsed.Host, parsed.Scheme == "https", nil
 }
 
 func (c *Impl) getObjectFullName(objectName string) string {
