@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/minio/minio-go/v7"
@@ -42,6 +43,11 @@ var ErrEmptyDeletePrefix = errors.New("s3: refusing DeleteDir with empty prefix 
 // minio-go would otherwise default to AWS, which is virtually never the
 // intent for the S3-compatible providers this package targets.
 var ErrEmptyEndpoint = errors.New("s3: empty endpoint")
+
+// ErrInvalidEndpoint is returned by init when the caller passed an endpoint
+// minio-go cannot use directly: unsupported scheme, or a URL carrying a
+// path / query / fragment that we would otherwise have to silently drop.
+var ErrInvalidEndpoint = errors.New("s3: invalid endpoint")
 
 type Client interface {
 	Close()
@@ -208,23 +214,37 @@ func (c *Impl) DeleteDir(ctx context.Context, objectName string) error {
 	})
 
 	// Filter list errors out of the stream so RemoveObjects only sees keys.
+	// listErrCh is buffered with cap 1 and written via a defer so we always
+	// signal the receiver below, even if ctx is canceled or RemoveObjects
+	// stops draining toDelete mid-flight (which would otherwise leak this
+	// goroutine on a blocked send).
 	toDelete := make(chan minio.ObjectInfo)
 	listErrCh := make(chan error, 1)
 
 	go func() {
-		defer close(toDelete)
+		var listErr error
+
+		defer func() {
+			close(toDelete)
+
+			listErrCh <- listErr
+		}()
 
 		for info := range listCh {
 			if info.Err != nil {
-				listErrCh <- info.Err
+				listErr = info.Err
 
 				return
 			}
 
-			toDelete <- info
-		}
+			select {
+			case toDelete <- info:
+			case <-ctx.Done():
+				listErr = ctx.Err()
 
-		listErrCh <- nil
+				return
+			}
+		}
 	}()
 
 	removeCh := c.client.RemoveObjects(ctx, c.bucketName, toDelete, minio.RemoveObjectsOptions{})
@@ -344,8 +364,9 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (bool, error) 
 
 // isNotFoundErr reports whether err represents a 404 for an S3 object.
 // minio-go normalizes errors from AWS S3 / MinIO / Hetzner / etc. into
-// minio.ErrorResponse via ToErrorResponse — both NoSuchKey and a raw
-// HTTP 404 status are accepted to cover all S3-compatible providers.
+// minio.ErrorResponse via ToErrorResponse — we accept NoSuchKey (S3 spec
+// code), NotFound (returned by some providers / for HEAD without body),
+// and a raw HTTP 404 status as the catch-all.
 func isNotFoundErr(err error) bool {
 	if err == nil {
 		return false
@@ -353,7 +374,9 @@ func isNotFoundErr(err error) bool {
 
 	resp := minio.ToErrorResponse(err)
 
-	return resp.Code == "NoSuchKey" || resp.StatusCode == http.StatusNotFound
+	return resp.Code == "NoSuchKey" ||
+		resp.Code == "NotFound" ||
+		resp.StatusCode == http.StatusNotFound
 }
 
 func (c *Impl) GetPublicUrl(_ context.Context, objectName string) (string, error) {
@@ -458,7 +481,10 @@ func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, uplo
 	return nil
 }
 
-func (c *Impl) init(ctx context.Context) error {
+// init is intentionally context-agnostic — minio.New does not perform a
+// round-trip, so there is nothing to cancel here. The ctx parameter is kept
+// on the signature only so call sites stay symmetric with the gcs sibling.
+func (c *Impl) init(_ context.Context) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -488,15 +514,14 @@ func (c *Impl) init(ctx context.Context) error {
 
 	c.client = client
 
-	_ = ctx
-
 	return nil
 }
 
 // parseEndpoint splits a caller-supplied endpoint into a host (no scheme) plus
-// a Secure flag, since minio.New takes them separately. An empty endpoint is
-// rejected — minio-go would default to AWS, which is almost never what the
-// caller wants for an S3-compatible setup.
+// a Secure flag, since minio.New takes them separately. We reject anything
+// the caller might have plausibly meant differently than what minio-go will
+// do with it: empty endpoint, non-http(s) scheme, or a URL with a path /
+// query / fragment that minio-go would silently ignore.
 func parseEndpoint(endpoint string) (string, bool, error) {
 	if endpoint == "" {
 		return "", false, ErrEmptyEndpoint
@@ -508,11 +533,26 @@ func parseEndpoint(endpoint string) (string, bool, error) {
 	}
 
 	if parsed.Host == "" {
-		// no scheme present, treat the whole string as host; default to https
+		// No scheme; the whole string is treated as a bare host. Disallow
+		// anything that looks like a URL fragment we'd otherwise drop.
+		if strings.ContainsAny(endpoint, "/?#") {
+			return "", false, fmt.Errorf("%w: bare host must not contain path/query/fragment: %q", ErrInvalidEndpoint, endpoint)
+		}
+
 		return endpoint, true, nil
 	}
 
-	return parsed.Host, parsed.Scheme != "http", nil
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return "", false, fmt.Errorf("%w: scheme must be http or https, got %q: %q", ErrInvalidEndpoint, parsed.Scheme, endpoint)
+	}
+
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false, fmt.Errorf("%w: must not contain path/query/fragment: %q", ErrInvalidEndpoint, endpoint)
+	}
+
+	return parsed.Host, parsed.Scheme == "https", nil
 }
 
 func (c *Impl) getObjectFullName(objectName string) string {

@@ -33,6 +33,11 @@ func TestIsNotFoundErr(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "minio NotFound code (HEAD without body or non-AWS providers)",
+			err:  minio.ErrorResponse{Code: "NotFound", Message: "not found"},
+			want: true,
+		},
+		{
 			name: "minio http 404 status without code",
 			err:  minio.ErrorResponse{StatusCode: http.StatusNotFound, Message: "not found"},
 			want: true,
@@ -98,11 +103,11 @@ func TestParseEndpoint(t *testing.T) {
 		endpoint   string
 		wantHost   string
 		wantSecure bool
-		wantErr    bool
+		wantErr    error
 	}{
 		{
 			name:    "empty endpoint is rejected",
-			wantErr: true,
+			wantErr: ErrEmptyEndpoint,
 		},
 		{
 			name:       "https URL strips scheme and is secure",
@@ -122,6 +127,31 @@ func TestParseEndpoint(t *testing.T) {
 			wantHost:   "hetzner.example.com",
 			wantSecure: true,
 		},
+		{
+			name:     "https URL with path is rejected",
+			endpoint: "https://host.example.com/minio",
+			wantErr:  ErrInvalidEndpoint,
+		},
+		{
+			name:     "https URL with query is rejected",
+			endpoint: "https://host.example.com?region=eu",
+			wantErr:  ErrInvalidEndpoint,
+		},
+		{
+			name:     "https URL with fragment is rejected",
+			endpoint: "https://host.example.com#frag",
+			wantErr:  ErrInvalidEndpoint,
+		},
+		{
+			name:     "non-http scheme is rejected",
+			endpoint: "ftp://host.example.com",
+			wantErr:  ErrInvalidEndpoint,
+		},
+		{
+			name:     "bare host containing a slash is rejected",
+			endpoint: "host.example.com/minio",
+			wantErr:  ErrInvalidEndpoint,
+		},
 	}
 
 	for _, testCase := range cases {
@@ -130,8 +160,8 @@ func TestParseEndpoint(t *testing.T) {
 
 			host, secure, err := parseEndpoint(testCase.endpoint)
 
-			if testCase.wantErr {
-				require.Error(t, err)
+			if testCase.wantErr != nil {
+				require.ErrorIs(t, err, testCase.wantErr)
 
 				return
 			}
