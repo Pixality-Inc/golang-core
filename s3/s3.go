@@ -293,7 +293,18 @@ func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	obj, err := c.client.GetObject(ctx, c.bucketName, objectFullName, minio.GetObjectOptions{})
+	// Force Accept-Encoding: gzip on the request. Some S3-compatible backends
+	// (observed empirically on the staging bucket) perform decompressive
+	// transcoding when the client does NOT advertise an encoding: an object
+	// stored with Content-Encoding: gzip gets unpacked server-side before the
+	// bytes reach us. Sending Accept-Encoding: gzip tells the server "give me
+	// the stored bytes as-is". Pairs with DisableCompression: true on the
+	// transport (set in init) which keeps net/http from auto-decompressing on
+	// the way back. This is the S3 equivalent of GCS's ReadCompressed(true).
+	opts := minio.GetObjectOptions{}
+	opts.Set("Accept-Encoding", "gzip")
+
+	obj, err := c.client.GetObject(ctx, c.bucketName, objectFullName, opts)
 	if err != nil {
 		return nil, fmt.Errorf("s3: download '%s': %w", objectFullName, err)
 	}
