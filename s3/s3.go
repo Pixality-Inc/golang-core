@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -497,10 +498,29 @@ func (c *Impl) init(_ context.Context) error {
 		return err
 	}
 
+	// Build our own *http.Transport with DisableCompression: true so net/http
+	// neither advertises Accept-Encoding: gzip nor transparently gunzips
+	// responses. Objects with Content-Encoding: gzip (e.g. .csv.gz served to
+	// browsers) must reach our backends byte-for-byte; the header is a contract
+	// with the frontend, not an instruction to our backends. Constructing fresh
+	// here (instead of cloning http.DefaultTransport) keeps us independent of
+	// process-wide transport wrappers (otelhttp, datadog, etc.).
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          256,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		DisableCompression:    true,
+	}
+
 	opts := &minio.Options{
-		Creds:  credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
-		Secure: secure,
-		Region: c.region,
+		Creds:     credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
+		Secure:    secure,
+		Region:    c.region,
+		Transport: transport,
 	}
 
 	if c.usePathStyle {
