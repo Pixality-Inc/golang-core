@@ -49,12 +49,6 @@ var ErrEmptyEndpoint = errors.New("s3: empty endpoint")
 // path / query / fragment that we would otherwise have to silently drop.
 var ErrInvalidEndpoint = errors.New("s3: invalid endpoint")
 
-// ErrUnexpectedDefaultTransport is returned by init when http.DefaultTransport
-// is not the concrete *http.Transport we clone to set DisableCompression on.
-// In practice this is the stdlib invariant — the wrap is there to satisfy the
-// errcheck rule on type assertions without panicking the caller.
-var ErrUnexpectedDefaultTransport = errors.New("s3: unexpected http.DefaultTransport type")
-
 type Client interface {
 	Close()
 
@@ -503,23 +497,10 @@ func (c *Impl) init(_ context.Context) error {
 		return err
 	}
 
-	// DisableCompression keeps net/http from advertising Accept-Encoding: gzip
-	// and auto-gunzipping responses. Objects uploaded with Content-Encoding: gzip
-	// (e.g. .csv.gz served to browsers) must come through this client byte-for-byte;
-	// the header is a contract with the frontend, not an instruction to our backends.
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return fmt.Errorf("%w: %T", ErrUnexpectedDefaultTransport, http.DefaultTransport)
-	}
-
-	transport := defaultTransport.Clone()
-	transport.DisableCompression = true
-
 	opts := &minio.Options{
-		Creds:     credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
-		Secure:    secure,
-		Region:    c.region,
-		Transport: transport,
+		Creds:  credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
+		Secure: secure,
+		Region: c.region,
 	}
 
 	if c.usePathStyle {
