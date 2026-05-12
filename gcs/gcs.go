@@ -231,7 +231,11 @@ func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, 
 
 	objectFullName := c.getObjectFullName(objectName)
 
-	readCloser, err := c.client.Bucket(c.bucketName).Object(objectFullName).NewReader(ctx)
+	// ReadCompressed(true) disables GCS's decompressive transcoding so objects
+	// stored with Content-Encoding: gzip come back byte-for-byte. The header is
+	// kept on the object as a contract with the frontend; our backends must not
+	// silently unzip on read.
+	readCloser, err := c.client.Bucket(c.bucketName).Object(objectFullName).ReadCompressed(true).NewReader(ctx)
 	if err != nil {
 		return nil, err
 	}
