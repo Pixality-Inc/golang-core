@@ -12,13 +12,13 @@ func TestApplyIfNotNil(t *testing.T) {
 	value1 := "Hello"
 
 	result1 := ApplyIfNotNil(&value1, func(value *string) *string {
-		return MakeRef("[" + *value + "]")
+		return new("[" + *value + "]")
 	})
-	require.Equal(t, MakeRef(`[Hello]`), result1)
+	require.Equal(t, new(`[Hello]`), result1)
 	require.Equal(t, `[Hello]`, *result1)
 
 	result2 := ApplyIfNotNil[string, string](nil, func(value *string) *string {
-		return MakeRef("[" + *value + "]")
+		return new("[" + *value + "]")
 	})
 	require.Nil(t, result2)
 }

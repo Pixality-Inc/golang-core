@@ -27,7 +27,7 @@ func NewWorkflowImpl(
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"temporal_workflow",
 			logger.Fields{
-				"name": config.Name,
+				logFieldName: config.Name,
 			},
 		),
 		worker: worker,

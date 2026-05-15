@@ -19,6 +19,12 @@ import (
 
 const defaultConnectTimeout = 5 * time.Second
 
+const (
+	SASLMechanismPlain       = "PLAIN"
+	SASLMechanismScramSHA256 = "SCRAM-SHA-256"
+	SASLMechanismScramSHA512 = "SCRAM-SHA-512"
+)
+
 var (
 	ErrTLSConfig    = errors.New("kafka tls config error")
 	ErrSASLConfig   = errors.New("kafka sasl config error")
@@ -229,17 +235,17 @@ func validateConsumerConfig(cfg ConsumerConfig) error {
 
 func buildSASLMechanism(cfg SASLConfig) (sasl.Mechanism, error) {
 	switch cfg.Mechanism() {
-	case "PLAIN":
+	case SASLMechanismPlain:
 		return plain.Auth{
 			User: cfg.Username(),
 			Pass: cfg.Password(),
 		}.AsMechanism(), nil
-	case "SCRAM-SHA-256":
+	case SASLMechanismScramSHA256:
 		return scram.Auth{
 			User: cfg.Username(),
 			Pass: cfg.Password(),
 		}.AsSha256Mechanism(), nil
-	case "SCRAM-SHA-512":
+	case SASLMechanismScramSHA512:
 		return scram.Auth{
 			User: cfg.Username(),
 			Pass: cfg.Password(),

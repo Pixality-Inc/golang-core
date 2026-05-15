@@ -7,6 +7,8 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 )
 
+const logFieldName = "name"
+
 //go:generate mockgen -destination mocks/activity_gen.go -source activity.go
 type Activity interface {
 	Name() ActivityName
@@ -44,7 +46,7 @@ func NewActivityImpl(
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"temporal_activity",
 			logger.Fields{
-				"name": config.Name,
+				logFieldName: config.Name,
 			},
 		),
 		worker: worker,

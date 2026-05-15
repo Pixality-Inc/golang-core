@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const ContentEncodingGzip = "gzip"
+
 type Metadata interface {
 	ContentType() string
 	ContentEncoding() string
@@ -58,7 +60,7 @@ func GetFileMetadataByName(filename string) (Metadata, error) {
 	var contentEncoding string
 
 	if ext2 == ".gz" {
-		contentEncoding = "gzip"
+		contentEncoding = ContentEncodingGzip
 	}
 
 	metadata := NewMetadata(

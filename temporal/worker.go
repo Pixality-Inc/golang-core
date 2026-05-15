@@ -60,7 +60,7 @@ func NewWorker(
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"temporal_worker",
 			logger.Fields{
-				"name": config.Name,
+				logFieldName: config.Name,
 			},
 		),
 		client:     client,
