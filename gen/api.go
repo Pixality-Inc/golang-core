@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pixality-inc/golang-core/util"
-
 	protoParser "github.com/emicklei/proto"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gobeam/stringy"
@@ -1020,7 +1018,7 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 				} else {
 					responseRef := &openapi3.ResponseRef{
 						Value: &openapi3.Response{
-							Description: util.MakeRef(responseModelName),
+							Description: new(responseModelName),
 							Headers:     nil,
 							Content: map[string]*openapi3.MediaType{
 								"application/json": {

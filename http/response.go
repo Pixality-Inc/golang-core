@@ -28,6 +28,13 @@ const (
 	DataFormatXProtobuf = 3
 )
 
+const (
+	mediaTypeJSON      = "application/json"
+	mediaTypeProtobuf  = "application/protobuf"
+	mediaTypeXProtobuf = "application/x-protobuf"
+	mediaTypeAny       = "*/*"
+)
+
 func ReadBody(ctx *fasthttp.RequestCtx, obj proto.Message) error {
 	format, err := getInputFormat(ctx)
 	if err != nil {
@@ -161,15 +168,15 @@ func renderResponse(ctx *fasthttp.RequestCtx, statusCode int, response proto.Mes
 	switch format {
 	case DataFormatJson:
 		responseBytes, err = jsonMarshaller.Marshal(response)
-		contentType = "application/json"
+		contentType = mediaTypeJSON
 
 	case DataFormatProtobuf:
 		responseBytes, err = proto.Marshal(response)
-		contentType = "application/protobuf"
+		contentType = mediaTypeProtobuf
 
 	case DataFormatXProtobuf:
 		responseBytes, err = proto.Marshal(response)
-		contentType = "application/x-protobuf"
+		contentType = mediaTypeXProtobuf
 	}
 
 	if err != nil {
@@ -250,13 +257,13 @@ func parseAcceptHeader(header string) []acceptRange {
 // returns DataFormatUnknown for unsupported types.
 func mediaTypeToFormat(mediaType string) dataFormatType {
 	switch mediaType {
-	case "application/json":
+	case mediaTypeJSON:
 		return DataFormatJson
-	case "application/protobuf":
+	case mediaTypeProtobuf:
 		return DataFormatProtobuf
-	case "application/x-protobuf":
+	case mediaTypeXProtobuf:
 		return DataFormatXProtobuf
-	case "*/*":
+	case mediaTypeAny:
 		return DataFormatJson
 	case "":
 		return DataFormatJson

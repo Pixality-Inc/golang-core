@@ -41,7 +41,7 @@ func TestMap(t *testing.T) {
 			name:  "multiple elements",
 			input: []int{1, 2, 3, 4, 5},
 			f: func(x int) (string, error) {
-				return string(rune('a' + x - 1)), nil
+				return string(rune('a' + x - 1)), nil //nolint:gosec // test input bounded to 1..5
 			},
 			want:    []string{"a", "b", "c", "d", "e"},
 			wantErr: false,
@@ -106,7 +106,7 @@ func TestMapSimple(t *testing.T) {
 			name:  "multiple elements",
 			input: []int{1, 2, 3, 4, 5},
 			f: func(x int) string {
-				return string(rune('a' + x - 1))
+				return string(rune('a' + x - 1)) //nolint:gosec // test input bounded to 1..5
 			},
 			want: []string{"a", "b", "c", "d", "e"},
 		},

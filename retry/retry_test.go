@@ -3,6 +3,7 @@ package retry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -179,7 +180,7 @@ func TestCalculateBackoff_ExponentialBackoff(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run("attempt "+string(rune(tc.attempt+'0')), func(t *testing.T) {
+		t.Run(fmt.Sprintf("attempt %d", tc.attempt), func(t *testing.T) {
 			t.Parallel()
 
 			result := CalculateBackoff(tc.attempt, policy)

@@ -138,7 +138,7 @@ func TestClientImpl_PostMultipart(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.True(t, strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data"))
 
-		err := r.ParseMultipartForm(10 << 20)
+		err := r.ParseMultipartForm(10 << 20) //nolint:gosec // test httptest server, 10MB limit is bounded
 		assert.NoError(t, err)
 
 		assert.Equal(t, "test_value", r.FormValue("test_field"))

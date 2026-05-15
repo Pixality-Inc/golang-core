@@ -26,7 +26,7 @@ func Test_GetFileMetadataByName(t *testing.T) {
 			name:                "text gzipped",
 			filename:            "test.txt.gz",
 			wantContentType:     "text/plain",
-			wantContentEncoding: "gzip",
+			wantContentEncoding: ContentEncodingGzip,
 		},
 		{
 			name:                "json",
@@ -38,7 +38,7 @@ func Test_GetFileMetadataByName(t *testing.T) {
 			name:                "json gzipped",
 			filename:            "test.json.gz",
 			wantContentType:     "application/json",
-			wantContentEncoding: "gzip",
+			wantContentEncoding: ContentEncodingGzip,
 		},
 		{
 			name:                "csv",
@@ -50,7 +50,7 @@ func Test_GetFileMetadataByName(t *testing.T) {
 			name:                "csv gzipped",
 			filename:            "test.csv.gz",
 			wantContentType:     "text/csv",
-			wantContentEncoding: "gzip",
+			wantContentEncoding: ContentEncodingGzip,
 		},
 		{
 			name:                "jpg",

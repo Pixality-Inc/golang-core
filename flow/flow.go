@@ -287,7 +287,7 @@ func (f *Impl) runActionTrigger(ctx context.Context, env *Env, action Action) (*
 	}
 
 	if trigger.Async {
-		// nolint:contextcheck
+		// nolint:contextcheck,gosec // async trigger must outlive the request scope
 		go func() {
 			_, err := triggerFunc(context.Background(), data)
 			if err != nil {
