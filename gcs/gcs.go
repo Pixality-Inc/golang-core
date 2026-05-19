@@ -12,7 +12,6 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 	storage "github.com/pixality-inc/golang-core/storage"
 
-	"cloud.google.com/go/auth/credentials"
 	gcs "cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -418,15 +417,7 @@ func (c *Impl) init(ctx context.Context) error {
 		return nil
 	}
 
-	creds, err := credentials.DetectDefault(&credentials.DetectOptions{
-		CredentialsFile: c.credentialsFilename,
-		Scopes:          []string{gcs.ScopeFullControl},
-	})
-	if err != nil {
-		return fmt.Errorf("loading gcs credentials from %q: %w", c.credentialsFilename, err)
-	}
-
-	client, err := gcs.NewClient(ctx, option.WithAuthCredentials(creds))
+	client, err := gcs.NewClient(ctx, option.WithCredentialsFile(c.credentialsFilename)) // nolint:staticcheck
 	if err != nil {
 		return err
 	}
