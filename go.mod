@@ -10,6 +10,7 @@ require (
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/emicklei/proto v1.14.3
 	github.com/fasthttp/router v1.5.4
+	github.com/fasthttp/websocket v1.5.12
 	github.com/ferluci/fast-realip v1.0.1
 	github.com/georgysavva/scany/v2 v2.1.4
 	github.com/getkin/kin-openapi v0.137.0
