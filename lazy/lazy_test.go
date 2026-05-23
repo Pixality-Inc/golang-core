@@ -104,7 +104,9 @@ func TestLazyConcurrentGetCallsBodyOnce(t *testing.T) {
 	const goroutines = 10
 
 	var calls atomic.Int64
+
 	started := make(chan struct{})
+
 	release := make(chan struct{})
 
 	laz := New(func(ctx context.Context) (int, error) {
@@ -116,19 +118,19 @@ func TestLazyConcurrentGetCallsBodyOnce(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
+
 	results := make(chan int, goroutines)
+
 	errs := make(chan error, goroutines)
 
 	for range goroutines {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			value, err := laz.Get(context.Background())
+
 			results <- value
+
 			errs <- err
-		}()
+		})
 	}
 
 	waitForClosed(t, started)
