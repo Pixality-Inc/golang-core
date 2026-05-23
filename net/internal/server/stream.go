@@ -9,12 +9,12 @@ import (
 	coreNet "github.com/pixality-inc/golang-core/net"
 )
 
-func AcceptStreamConnections[T any](
+func AcceptStreamConnections[INP, OUT any](
 	ctx context.Context,
 	loggable logger.Loggable,
 	lifecycle *Lifecycle[net.Listener],
-	handler coreNet.Handler[T],
-	protocol coreNet.Protocol[T],
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
 ) error {
 	for {
 		select {
@@ -58,20 +58,22 @@ func AcceptStreamConnections[T any](
 	}
 }
 
-func HandleStreamConnection[T any](
+func HandleStreamConnection[INP, OUT any](
 	ctx context.Context,
 	log logger.Logger,
-	handler coreNet.Handler[T],
-	protocol coreNet.Protocol[T],
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
 	netConnection net.Conn,
-	connection coreNet.Connection[T],
+	connection coreNet.Connection[OUT],
 ) error {
 	stopWatchingContext := WatchContextClose(ctx, log, netConnection)
 	defer stopWatchingContext()
 
-	var client coreNet.Client[T]
+	var client coreNet.Client[INP]
+
 	defer func() {
-		CloseClient(log, client)
+		CloseClient(ctx, log, client)
+
 		Close(ctx, log, netConnection)
 	}()
 

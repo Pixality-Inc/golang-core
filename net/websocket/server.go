@@ -13,26 +13,30 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-type Server[T any] interface {
+type Server[INP, OUT any] interface {
 	Handler() fasthttp.RequestHandler
 	Handle(ctx *fasthttp.RequestCtx)
 }
 
-type Impl[T any] struct {
+type Impl[INP, OUT any] struct {
 	log              logger.Loggable
-	handler          coreNet.Handler[T]
-	protocol         coreNet.Protocol[T]
+	handler          coreNet.Handler[INP, OUT]
+	protocol         coreNet.Protocol[INP, OUT]
 	upgrader         fasthttpWebsocket.FastHTTPUpgrader
 	writeMessageType int
 }
 
-func New[T any](handler coreNet.Handler[T], protocol coreNet.Protocol[T], opts ...Option) Server[T] {
+func New[INP, OUT any](
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
+	opts ...Option,
+) Server[INP, OUT] {
 	serverOptions := defaultOptions()
 	for _, option := range opts {
 		option(serverOptions)
 	}
 
-	server := &Impl[T]{
+	server := &Impl[INP, OUT]{
 		log:              logger.NewLoggableImplWithService("websocket_server"),
 		handler:          handler,
 		protocol:         protocol,
@@ -43,15 +47,19 @@ func New[T any](handler coreNet.Handler[T], protocol coreNet.Protocol[T], opts .
 	return server
 }
 
-func NewRequestHandler[T any](handler coreNet.Handler[T], protocol coreNet.Protocol[T], options ...Option) fasthttp.RequestHandler {
+func NewRequestHandler[INP, OUT any](
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
+	options ...Option,
+) fasthttp.RequestHandler {
 	return New(handler, protocol, options...).Handler()
 }
 
-func (s *Impl[T]) Handler() fasthttp.RequestHandler {
+func (s *Impl[INP, OUT]) Handler() fasthttp.RequestHandler {
 	return s.Handle
 }
 
-func (s *Impl[T]) Handle(ctx *fasthttp.RequestCtx) {
+func (s *Impl[INP, OUT]) Handle(ctx *fasthttp.RequestCtx) {
 	log := s.log.GetLogger(ctx)
 
 	if !fasthttpWebsocket.FastHTTPIsWebSocketUpgrade(ctx) {
@@ -70,7 +78,7 @@ func (s *Impl[T]) Handle(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (s *Impl[T]) handleConnection(
+func (s *Impl[INP, OUT]) handleConnection(
 	done <-chan struct{},
 	websocketConnection *fasthttpWebsocket.Conn,
 	netConnection net.Conn,
@@ -91,9 +99,11 @@ func (s *Impl[T]) handleConnection(
 		s.writeMessageType,
 	)
 
-	var client coreNet.Client[T]
+	var client coreNet.Client[INP]
+
 	defer func() {
-		internalServer.CloseClient(log, client)
+		internalServer.CloseClient(ctx, log, client)
+
 		internalServer.Close(ctx, log, connection)
 	}()
 
@@ -126,7 +136,7 @@ func (s *Impl[T]) handleConnection(
 	}
 }
 
-func (s *Impl[T]) handleMessages(ctx context.Context, client coreNet.Client[T], reader io.Reader) error {
+func (s *Impl[INP, OUT]) handleMessages(ctx context.Context, client coreNet.Client[INP], reader io.Reader) error {
 	messages, err := s.protocol.Read(reader)
 	if err != nil {
 		return fmt.Errorf("read protocol: %w", err)
@@ -148,7 +158,7 @@ func (s *Impl[T]) handleMessages(ctx context.Context, client coreNet.Client[T], 
 	}
 }
 
-func (s *Impl[T]) watchDone(
+func (s *Impl[INP, OUT]) watchDone(
 	ctx context.Context,
 	done <-chan struct{},
 	connection *fasthttpWebsocket.Conn,

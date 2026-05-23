@@ -15,35 +15,39 @@ import (
 
 var errUnsupportedPacketConnection = errors.New("unsupported packet connection")
 
-type Impl[T any] struct {
+type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
-	handler   coreNet.Handler[T]
-	protocol  coreNet.Protocol[T]
+	handler   coreNet.Handler[INP, OUT]
+	protocol  coreNet.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[*net.UDPConn]
 
-	clients      map[string]clientSession[T]
+	clients      map[string]clientSession[INP]
 	clientsMutex sync.Mutex
 }
 
-type clientSession[T any] struct {
-	client coreNet.Client[T]
+type clientSession[INP any] struct {
+	client coreNet.Client[INP]
 }
 
-func New[T any](addr string, handler coreNet.Handler[T], protocol coreNet.Protocol[T]) coreNet.Server[T] {
-	return &Impl[T]{
+func New[INP, OUT any](
+	addr string,
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
+) coreNet.Server[INP, OUT] {
+	return &Impl[INP, OUT]{
 		log:       logger.NewLoggableImplWithService("udp_server"),
 		addr:      addr,
 		handler:   handler,
 		protocol:  protocol,
 		lifecycle: internalServer.NewLifecycle[*net.UDPConn](),
 
-		clients:      make(map[string]clientSession[T]),
+		clients:      make(map[string]clientSession[INP]),
 		clientsMutex: sync.Mutex{},
 	}
 }
 
-func (s *Impl[T]) Start(ctx context.Context) error {
+func (s *Impl[INP, OUT]) Start(ctx context.Context) error {
 	log := s.log.GetLogger(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -111,11 +115,11 @@ func (s *Impl[T]) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Impl[T]) Stop() error {
+func (s *Impl[INP, OUT]) Stop() error {
 	return s.shutdown(context.Background())
 }
 
-func (s *Impl[T]) readMessages(ctx context.Context) error {
+func (s *Impl[INP, OUT]) readMessages(ctx context.Context) error {
 	log := s.log.GetLogger(ctx)
 	buffer := make([]byte, internalServer.ReadBufferSize)
 
@@ -150,7 +154,7 @@ func (s *Impl[T]) readMessages(ctx context.Context) error {
 	return nil
 }
 
-func (s *Impl[T]) handleDatagram(
+func (s *Impl[INP, OUT]) handleDatagram(
 	ctx context.Context,
 	udpConnection *net.UDPConn,
 	remoteAddress *net.UDPAddr,
@@ -179,11 +183,11 @@ func (s *Impl[T]) handleDatagram(
 	return nil
 }
 
-func (s *Impl[T]) getClient(
+func (s *Impl[INP, OUT]) getClient(
 	ctx context.Context,
 	udpConnection *net.UDPConn,
 	remoteAddress *net.UDPAddr,
-) (coreNet.Client[T], error) {
+) (coreNet.Client[INP], error) {
 	key := remoteAddress.String()
 
 	s.clientsMutex.Lock()
@@ -205,31 +209,32 @@ func (s *Impl[T]) getClient(
 		return nil, err
 	}
 
-	s.clients[key] = clientSession[T]{
+	s.clients[key] = clientSession[INP]{
 		client: client,
 	}
 
 	return client, nil
 }
 
-func (s *Impl[T]) closeClients(ctx context.Context) {
+func (s *Impl[INP, OUT]) closeClients(ctx context.Context) {
 	s.clientsMutex.Lock()
 
-	clients := make([]coreNet.Client[T], 0, len(s.clients))
+	clients := make([]coreNet.Client[INP], 0, len(s.clients))
 	for _, session := range s.clients {
 		clients = append(clients, session.client)
 	}
 
-	s.clients = make(map[string]clientSession[T])
+	s.clients = make(map[string]clientSession[INP])
 
 	s.clientsMutex.Unlock()
 
 	log := s.log.GetLogger(ctx)
+
 	for _, client := range clients {
-		internalServer.CloseClient(log, client)
+		internalServer.CloseClient(ctx, log, client)
 	}
 }
 
-func (s *Impl[T]) shutdown(ctx context.Context) error {
+func (s *Impl[INP, OUT]) shutdown(ctx context.Context) error {
 	return s.lifecycle.Shutdown(ctx, "socket")
 }

@@ -14,16 +14,20 @@ import (
 
 var errSocketPathExists = errors.New("socket path exists and is not a unix socket")
 
-type Impl[T any] struct {
+type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
-	handler   coreNet.Handler[T]
-	protocol  coreNet.Protocol[T]
+	handler   coreNet.Handler[INP, OUT]
+	protocol  coreNet.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[net.Listener]
 }
 
-func New[T any](addr string, handler coreNet.Handler[T], protocol coreNet.Protocol[T]) coreNet.Server[T] {
-	return &Impl[T]{
+func New[INP, OUT any](
+	addr string,
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
+) coreNet.Server[INP, OUT] {
+	return &Impl[INP, OUT]{
 		log:       logger.NewLoggableImplWithService("unix_server"),
 		addr:      addr,
 		handler:   handler,
@@ -32,7 +36,7 @@ func New[T any](addr string, handler coreNet.Handler[T], protocol coreNet.Protoc
 	}
 }
 
-func (s *Impl[T]) Start(ctx context.Context) error {
+func (s *Impl[INP, OUT]) Start(ctx context.Context) error {
 	log := s.log.GetLogger(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -93,18 +97,18 @@ func (s *Impl[T]) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Impl[T]) Stop() error {
+func (s *Impl[INP, OUT]) Stop() error {
 	return s.shutdown(context.Background())
 }
 
-func (s *Impl[T]) shutdown(ctx context.Context) error {
+func (s *Impl[INP, OUT]) shutdown(ctx context.Context) error {
 	shutdownErr := s.lifecycle.Shutdown(ctx, "listener")
 	removeErr := s.removeSocketFile()
 
 	return errors.Join(shutdownErr, removeErr)
 }
 
-func (s *Impl[T]) removeSocketFile() error {
+func (s *Impl[INP, OUT]) removeSocketFile() error {
 	fileInfo, err := os.Lstat(s.addr)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

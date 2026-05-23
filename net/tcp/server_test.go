@@ -44,7 +44,7 @@ func (c *testClient) OnWrite(_ context.Context, message []byte) error {
 	return nil
 }
 
-func (c *testClient) OnClose() error {
+func (c *testClient) OnClose(_ context.Context) error {
 	c.closeOnce.Do(func() {
 		close(c.closed)
 	})
@@ -85,7 +85,7 @@ func TestServerClosesClientsWhenContextDone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte])
+	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -120,7 +120,7 @@ func TestServerReadsDataWithoutCarriageReturnDelimiter(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte])
+	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -157,7 +157,7 @@ func TestServerUsesTLSConfig(t *testing.T) {
 		handler,
 		coreNet.NewByteProtocol(),
 		WithTLSConfig(serverTLSConfig),
-	).(*Impl[[]byte])
+	).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -182,7 +182,7 @@ func TestServerUsesTLSConfig(t *testing.T) {
 	require.NoError(t, waitServer(t, serverErr))
 }
 
-func waitServerAddress(t *testing.T, server *Impl[[]byte]) string {
+func waitServerAddress(t *testing.T, server *Impl[[]byte, []byte]) string {
 	t.Helper()
 
 	var addr string

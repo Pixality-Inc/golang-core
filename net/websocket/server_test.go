@@ -48,7 +48,7 @@ func (c *testClient) OnWrite(ctx context.Context, message []byte) error {
 	return c.connection.Write(ctx, data)
 }
 
-func (c *testClient) OnClose() error {
+func (c *testClient) OnClose(_ context.Context) error {
 	c.closeOnce.Do(func() {
 		close(c.closed)
 	})

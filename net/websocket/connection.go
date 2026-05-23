@@ -10,24 +10,24 @@ import (
 	coreNet "github.com/pixality-inc/golang-core/net"
 )
 
-type ConnectionImpl[T any] struct {
+type ConnectionImpl[INP, OUT any] struct {
 	id               coreNet.ConnectionId
 	connection       *fasthttpWebsocket.Conn
 	netConnection    net.Conn
 	address          coreNet.Addresses
-	protocol         coreNet.Protocol[T]
+	protocol         coreNet.Protocol[INP, OUT]
 	writeMessageType int
 	mutex            sync.Mutex
 }
 
-func NewConnection[T any](
+func NewConnection[INP, OUT any](
 	id coreNet.ConnectionId,
 	connection *fasthttpWebsocket.Conn,
 	netConnection net.Conn,
-	protocol coreNet.Protocol[T],
+	protocol coreNet.Protocol[INP, OUT],
 	writeMessageType int,
-) coreNet.Connection[T] {
-	return &ConnectionImpl[T]{
+) coreNet.Connection[OUT] {
+	return &ConnectionImpl[INP, OUT]{
 		id:               id,
 		connection:       connection,
 		netConnection:    netConnection,
@@ -38,15 +38,15 @@ func NewConnection[T any](
 	}
 }
 
-func (c *ConnectionImpl[T]) Id() coreNet.ConnectionId {
+func (c *ConnectionImpl[INP, OUT]) Id() coreNet.ConnectionId {
 	return c.id
 }
 
-func (c *ConnectionImpl[T]) Address() coreNet.Addresses {
+func (c *ConnectionImpl[INP, OUT]) Address() coreNet.Addresses {
 	return c.address
 }
 
-func (c *ConnectionImpl[T]) Write(ctx context.Context, message T) error {
+func (c *ConnectionImpl[INP, OUT]) Write(ctx context.Context, message OUT) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -68,7 +68,7 @@ func (c *ConnectionImpl[T]) Write(ctx context.Context, message T) error {
 	return nil
 }
 
-func (c *ConnectionImpl[T]) Close() error {
+func (c *ConnectionImpl[INP, OUT]) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 

@@ -6,21 +6,21 @@ import (
 	stdNet "net"
 )
 
-type PacketConnectionImpl[T any] struct {
+type PacketConnectionImpl[INP, OUT any] struct {
 	id            ConnectionId
 	connection    stdNet.PacketConn
 	remoteAddress stdNet.Addr
 	address       Addresses
-	protocol      Protocol[T]
+	protocol      Protocol[INP, OUT]
 }
 
-func NewPacketConnection[T any](
+func NewPacketConnection[INP, OUT any](
 	id ConnectionId,
 	connection stdNet.PacketConn,
 	remoteAddress stdNet.Addr,
-	protocol Protocol[T],
-) Connection[T] {
-	return &PacketConnectionImpl[T]{
+	protocol Protocol[INP, OUT],
+) Connection[OUT] {
+	return &PacketConnectionImpl[INP, OUT]{
 		id:            id,
 		connection:    connection,
 		remoteAddress: remoteAddress,
@@ -29,15 +29,15 @@ func NewPacketConnection[T any](
 	}
 }
 
-func (c *PacketConnectionImpl[T]) Id() ConnectionId {
+func (c *PacketConnectionImpl[INP, OUT]) Id() ConnectionId {
 	return c.id
 }
 
-func (c *PacketConnectionImpl[T]) Address() Addresses {
+func (c *PacketConnectionImpl[INP, OUT]) Address() Addresses {
 	return c.address
 }
 
-func (c *PacketConnectionImpl[T]) Write(_ context.Context, message T) error {
+func (c *PacketConnectionImpl[INP, OUT]) Write(_ context.Context, message OUT) error {
 	buffer, err := c.protocol.Marshal(message)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -55,6 +55,6 @@ func (c *PacketConnectionImpl[T]) Write(_ context.Context, message T) error {
 	return nil
 }
 
-func (c *PacketConnectionImpl[T]) Close() error {
+func (c *PacketConnectionImpl[INP, OUT]) Close() error {
 	return nil
 }

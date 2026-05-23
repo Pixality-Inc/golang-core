@@ -11,22 +11,27 @@ import (
 	internalServer "github.com/pixality-inc/golang-core/net/internal/server"
 )
 
-type Impl[T any] struct {
+type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
-	handler   coreNet.Handler[T]
-	protocol  coreNet.Protocol[T]
+	handler   coreNet.Handler[INP, OUT]
+	protocol  coreNet.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[net.Listener]
 	tlsConfig *tls.Config
 }
 
-func New[T any](addr string, handler coreNet.Handler[T], protocol coreNet.Protocol[T], opts ...Option) coreNet.Server[T] {
+func New[INP, OUT any](
+	addr string,
+	handler coreNet.Handler[INP, OUT],
+	protocol coreNet.Protocol[INP, OUT],
+	opts ...Option,
+) coreNet.Server[INP, OUT] {
 	serverOptions := &options{}
 	for _, option := range opts {
 		option(serverOptions)
 	}
 
-	server := &Impl[T]{
+	server := &Impl[INP, OUT]{
 		log:       logger.NewLoggableImplWithService("tcp_server"),
 		addr:      addr,
 		handler:   handler,
@@ -38,7 +43,7 @@ func New[T any](addr string, handler coreNet.Handler[T], protocol coreNet.Protoc
 	return server
 }
 
-func (s *Impl[T]) Start(ctx context.Context) error {
+func (s *Impl[INP, OUT]) Start(ctx context.Context) error {
 	log := s.log.GetLogger(ctx)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -99,10 +104,10 @@ func (s *Impl[T]) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Impl[T]) Stop() error {
+func (s *Impl[INP, OUT]) Stop() error {
 	return s.shutdown(context.Background())
 }
 
-func (s *Impl[T]) shutdown(ctx context.Context) error {
+func (s *Impl[INP, OUT]) shutdown(ctx context.Context) error {
 	return s.lifecycle.Shutdown(ctx, "listener")
 }

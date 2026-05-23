@@ -11,20 +11,20 @@ import (
 
 var ErrNetWrite = errors.New("write")
 
-type NetConnectionImpl[T any] struct {
+type NetConnectionImpl[INP, OUT any] struct {
 	log        logger.Loggable
 	id         ConnectionId
 	connection net.Conn
 	address    Addresses
-	protocol   Protocol[T]
+	protocol   Protocol[INP, OUT]
 }
 
-func NewNetConnection[T any](
+func NewNetConnection[INP, OUT any](
 	id ConnectionId,
 	connection net.Conn,
-	protocol Protocol[T],
-) Connection[T] {
-	return &NetConnectionImpl[T]{
+	protocol Protocol[INP, OUT],
+) Connection[OUT] {
+	return &NetConnectionImpl[INP, OUT]{
 		log: logger.NewLoggableImplWithServiceAndFields("connection", logger.Fields{
 			"id": id.String(),
 		}),
@@ -35,15 +35,15 @@ func NewNetConnection[T any](
 	}
 }
 
-func (c *NetConnectionImpl[T]) Id() ConnectionId {
+func (c *NetConnectionImpl[INP, OUT]) Id() ConnectionId {
 	return c.id
 }
 
-func (c *NetConnectionImpl[T]) Address() Addresses {
+func (c *NetConnectionImpl[INP, OUT]) Address() Addresses {
 	return c.address
 }
 
-func (c *NetConnectionImpl[T]) Write(ctx context.Context, message T) error {
+func (c *NetConnectionImpl[INP, OUT]) Write(ctx context.Context, message OUT) error {
 	buffer, err := c.protocol.Marshal(message)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -61,6 +61,6 @@ func (c *NetConnectionImpl[T]) Write(ctx context.Context, message T) error {
 	return nil
 }
 
-func (c *NetConnectionImpl[T]) Close() error {
+func (c *NetConnectionImpl[INP, OUT]) Close() error {
 	return c.connection.Close()
 }

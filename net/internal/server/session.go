@@ -30,11 +30,11 @@ func Close(ctx context.Context, log logger.Logger, closeable Closeable) {
 	}
 }
 
-func OpenClient[T any](
+func OpenClient[INP, OUT any](
 	ctx context.Context,
-	handler coreNet.Handler[T],
-	connection coreNet.Connection[T],
-) (coreNet.Client[T], error) {
+	handler coreNet.Handler[INP, OUT],
+	connection coreNet.Connection[OUT],
+) (coreNet.Client[INP], error) {
 	client, err := handler.Handle(ctx, connection)
 	if err != nil {
 		return nil, fmt.Errorf("failed to handle connection: %w", err)
@@ -47,12 +47,16 @@ func OpenClient[T any](
 	return client, nil
 }
 
-func CloseClient[T any](log logger.Logger, client coreNet.Client[T]) {
+func CloseClient[INP any](
+	ctx context.Context,
+	log logger.Logger,
+	client coreNet.Client[INP],
+) {
 	if client == nil {
 		return
 	}
 
-	if err := client.OnClose(); err != nil {
+	if err := client.OnClose(ctx); err != nil {
 		log.WithError(err).Errorf("failed to close client")
 	}
 }

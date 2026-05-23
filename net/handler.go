@@ -2,7 +2,7 @@ package net
 
 import "context"
 
-type Handler[T any] interface {
-	Handle(ctx context.Context, connection Connection[T]) (Client[T], error)
+type Handler[INP, OUT any] interface {
+	Handle(ctx context.Context, connection Connection[OUT]) (Client[INP], error)
 	Close() error
 }
