@@ -9,13 +9,14 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 	coreNet "github.com/pixality-inc/golang-core/net"
 	internalServer "github.com/pixality-inc/golang-core/net/internal/server"
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
 
 type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
 	handler   coreNet.Handler[INP, OUT]
-	protocol  coreNet.Protocol[INP, OUT]
+	protocol  protocol2.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[net.Listener]
 	tlsConfig *tls.Config
 }
@@ -23,7 +24,7 @@ type Impl[INP, OUT any] struct {
 func New[INP, OUT any](
 	addr string,
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 	opts ...Option,
 ) coreNet.Server[INP, OUT] {
 	serverOptions := &options{}

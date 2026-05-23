@@ -10,6 +10,7 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 	coreNet "github.com/pixality-inc/golang-core/net"
 	internalServer "github.com/pixality-inc/golang-core/net/internal/server"
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 	"github.com/valyala/fasthttp"
 )
 
@@ -21,14 +22,14 @@ type Server[INP, OUT any] interface {
 type Impl[INP, OUT any] struct {
 	log              logger.Loggable
 	handler          coreNet.Handler[INP, OUT]
-	protocol         coreNet.Protocol[INP, OUT]
+	protocol         protocol2.Protocol[INP, OUT]
 	upgrader         fasthttpWebsocket.FastHTTPUpgrader
 	writeMessageType int
 }
 
 func New[INP, OUT any](
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 	opts ...Option,
 ) Server[INP, OUT] {
 	serverOptions := defaultOptions()
@@ -49,7 +50,7 @@ func New[INP, OUT any](
 
 func NewRequestHandler[INP, OUT any](
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 	options ...Option,
 ) fasthttp.RequestHandler {
 	return New(handler, protocol, options...).Handler()
@@ -137,7 +138,7 @@ func (s *Impl[INP, OUT]) handleConnection(
 }
 
 func (s *Impl[INP, OUT]) handleMessages(ctx context.Context, client coreNet.Client[INP], reader io.Reader) error {
-	messages, err := s.protocol.Read(reader)
+	messages, err := s.protocol.Read(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("read protocol: %w", err)
 	}

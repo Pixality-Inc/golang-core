@@ -7,6 +7,7 @@ import (
 
 	"github.com/pixality-inc/golang-core/logger"
 	coreNet "github.com/pixality-inc/golang-core/net"
+	"github.com/pixality-inc/golang-core/net/protocol"
 )
 
 func AcceptStreamConnections[INP, OUT any](
@@ -14,7 +15,7 @@ func AcceptStreamConnections[INP, OUT any](
 	loggable logger.Loggable,
 	lifecycle *Lifecycle[net.Listener],
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol.Protocol[INP, OUT],
 ) error {
 	for {
 		select {
@@ -62,7 +63,7 @@ func HandleStreamConnection[INP, OUT any](
 	ctx context.Context,
 	log logger.Logger,
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol.Protocol[INP, OUT],
 	netConnection net.Conn,
 	connection coreNet.Connection[OUT],
 ) error {
@@ -82,7 +83,7 @@ func HandleStreamConnection[INP, OUT any](
 		return err
 	}
 
-	messages, err := protocol.Read(netConnection)
+	messages, err := protocol.Read(ctx, netConnection)
 	if err != nil {
 		return fmt.Errorf("read protocol: %w", err)
 	}

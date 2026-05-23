@@ -8,6 +8,7 @@ import (
 
 	fasthttpWebsocket "github.com/fasthttp/websocket"
 	coreNet "github.com/pixality-inc/golang-core/net"
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
 
 type ConnectionImpl[INP, OUT any] struct {
@@ -15,7 +16,7 @@ type ConnectionImpl[INP, OUT any] struct {
 	connection       *fasthttpWebsocket.Conn
 	netConnection    net.Conn
 	address          coreNet.Addresses
-	protocol         coreNet.Protocol[INP, OUT]
+	protocol         protocol2.Protocol[INP, OUT]
 	writeMessageType int
 	mutex            sync.Mutex
 }
@@ -24,7 +25,7 @@ func NewConnection[INP, OUT any](
 	id coreNet.ConnectionId,
 	connection *fasthttpWebsocket.Conn,
 	netConnection net.Conn,
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 	writeMessageType int,
 ) coreNet.Connection[OUT] {
 	return &ConnectionImpl[INP, OUT]{
@@ -46,7 +47,7 @@ func (c *ConnectionImpl[INP, OUT]) Address() coreNet.Addresses {
 	return c.address
 }
 
-func (c *ConnectionImpl[INP, OUT]) Write(ctx context.Context, message OUT) error {
+func (c *ConnectionImpl[INP, OUT]) Write(ctx context.Context, messages ...OUT) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -56,7 +57,7 @@ func (c *ConnectionImpl[INP, OUT]) Write(ctx context.Context, message OUT) error
 		}
 	}
 
-	data, err := c.protocol.Marshal(message)
+	data, err := c.protocol.Marshal(ctx, messages...)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}

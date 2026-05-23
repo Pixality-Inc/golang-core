@@ -13,6 +13,7 @@ import (
 	"time"
 
 	coreNet "github.com/pixality-inc/golang-core/net"
+	"github.com/pixality-inc/golang-core/net/protocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,7 +84,7 @@ func TestServerReadsData(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(newSocketPath(t), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
+	server, ok := New(newSocketPath(t), handler, protocol.NewBinary()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -113,7 +114,7 @@ func TestServerClosesClientsWhenContextDone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(newSocketPath(t), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
+	server, ok := New(newSocketPath(t), handler, protocol.NewBinary()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -149,7 +150,7 @@ func TestServerDoesNotRemoveRegularFile(t *testing.T) {
 	socketPath := newSocketPath(t)
 	require.NoError(t, os.WriteFile(socketPath, []byte("not a socket"), 0o600))
 
-	err := New(socketPath, newTestHandler(), coreNet.NewByteProtocol()).Start(t.Context())
+	err := New(socketPath, newTestHandler(), protocol.NewBinary()).Start(t.Context())
 	require.ErrorIs(t, err, errSocketPathExists)
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	stdNet "net"
+
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
 
 type PacketConnectionImpl[INP, OUT any] struct {
@@ -11,14 +13,14 @@ type PacketConnectionImpl[INP, OUT any] struct {
 	connection    stdNet.PacketConn
 	remoteAddress stdNet.Addr
 	address       Addresses
-	protocol      Protocol[INP, OUT]
+	protocol      protocol2.Protocol[INP, OUT]
 }
 
 func NewPacketConnection[INP, OUT any](
 	id ConnectionId,
 	connection stdNet.PacketConn,
 	remoteAddress stdNet.Addr,
-	protocol Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 ) Connection[OUT] {
 	return &PacketConnectionImpl[INP, OUT]{
 		id:            id,
@@ -37,8 +39,8 @@ func (c *PacketConnectionImpl[INP, OUT]) Address() Addresses {
 	return c.address
 }
 
-func (c *PacketConnectionImpl[INP, OUT]) Write(_ context.Context, message OUT) error {
-	buffer, err := c.protocol.Marshal(message)
+func (c *PacketConnectionImpl[INP, OUT]) Write(ctx context.Context, messages ...OUT) error {
+	buffer, err := c.protocol.Marshal(ctx, messages...)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}

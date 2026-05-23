@@ -11,6 +11,7 @@ import (
 
 	fasthttpWebsocket "github.com/fasthttp/websocket"
 	coreNet "github.com/pixality-inc/golang-core/net"
+	"github.com/pixality-inc/golang-core/net/protocol"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -88,7 +89,7 @@ func TestServerHandlesWebSocketMessages(t *testing.T) {
 	t.Parallel()
 
 	handler := newTestHandler()
-	server := New(handler, coreNet.NewByteProtocol())
+	server := New(handler, protocol.NewBinary())
 
 	listener, stopHTTPServer := startHTTPServer(t, server.Handler())
 	defer stopHTTPServer()
@@ -113,7 +114,7 @@ func TestServerClosesClientsWhenFastHTTPShutsDown(t *testing.T) {
 	t.Parallel()
 
 	handler := newTestHandler()
-	server := New(handler, coreNet.NewByteProtocol())
+	server := New(handler, protocol.NewBinary())
 
 	listener, stopHTTPServer := startHTTPServer(t, server.Handler())
 	defer stopHTTPServer()
@@ -135,7 +136,7 @@ func TestServerRejectsNonUpgradeRequests(t *testing.T) {
 	t.Parallel()
 
 	handler := newTestHandler()
-	server := New(handler, coreNet.NewByteProtocol())
+	server := New(handler, protocol.NewBinary())
 
 	listener, stopHTTPServer := startHTTPServer(t, server.Handler())
 	defer stopHTTPServer()

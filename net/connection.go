@@ -7,6 +7,6 @@ import (
 type Connection[OUT any] interface {
 	Id() ConnectionId
 	Address() Addresses
-	Write(ctx context.Context, message OUT) error
+	Write(ctx context.Context, messages ...OUT) error
 	Close() error
 }

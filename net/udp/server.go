@@ -11,6 +11,7 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 	coreNet "github.com/pixality-inc/golang-core/net"
 	internalServer "github.com/pixality-inc/golang-core/net/internal/server"
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
 
 var errUnsupportedPacketConnection = errors.New("unsupported packet connection")
@@ -19,7 +20,7 @@ type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
 	handler   coreNet.Handler[INP, OUT]
-	protocol  coreNet.Protocol[INP, OUT]
+	protocol  protocol2.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[*net.UDPConn]
 
 	clients      map[string]clientSession[INP]
@@ -33,7 +34,7 @@ type clientSession[INP any] struct {
 func New[INP, OUT any](
 	addr string,
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 ) coreNet.Server[INP, OUT] {
 	return &Impl[INP, OUT]{
 		log:       logger.NewLoggableImplWithService("udp_server"),
@@ -169,7 +170,7 @@ func (s *Impl[INP, OUT]) handleDatagram(
 	data := make([]byte, num)
 	copy(data, buffer[:num])
 
-	messages, err := s.protocol.Read(bytes.NewReader(data))
+	messages, err := s.protocol.Read(ctx, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("read protocol: %w", err)
 	}

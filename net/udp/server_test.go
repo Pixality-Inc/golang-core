@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coreNet "github.com/pixality-inc/golang-core/net"
+	"github.com/pixality-inc/golang-core/net/protocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,7 +80,7 @@ func TestServerReadsDatagram(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
+	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, protocol.NewBinary()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)
@@ -109,7 +110,7 @@ func TestServerClosesClientsWhenContextDone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	handler := newTestHandler()
-	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, coreNet.NewByteProtocol()).(*Impl[[]byte, []byte])
+	server, ok := New(net.JoinHostPort("127.0.0.1", "0"), handler, protocol.NewBinary()).(*Impl[[]byte, []byte])
 	require.True(t, ok)
 
 	serverErr := make(chan error, 1)

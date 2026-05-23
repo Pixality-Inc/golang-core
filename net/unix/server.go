@@ -10,6 +10,7 @@ import (
 	"github.com/pixality-inc/golang-core/logger"
 	coreNet "github.com/pixality-inc/golang-core/net"
 	internalServer "github.com/pixality-inc/golang-core/net/internal/server"
+	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
 
 var errSocketPathExists = errors.New("socket path exists and is not a unix socket")
@@ -18,14 +19,14 @@ type Impl[INP, OUT any] struct {
 	log       logger.Loggable
 	addr      string
 	handler   coreNet.Handler[INP, OUT]
-	protocol  coreNet.Protocol[INP, OUT]
+	protocol  protocol2.Protocol[INP, OUT]
 	lifecycle *internalServer.Lifecycle[net.Listener]
 }
 
 func New[INP, OUT any](
 	addr string,
 	handler coreNet.Handler[INP, OUT],
-	protocol coreNet.Protocol[INP, OUT],
+	protocol protocol2.Protocol[INP, OUT],
 ) coreNet.Server[INP, OUT] {
 	return &Impl[INP, OUT]{
 		log:       logger.NewLoggableImplWithService("unix_server"),
