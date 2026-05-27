@@ -162,11 +162,19 @@ func (l *Impl) WithFields(fields Fields) Logger {
 
 func (l *Impl) WithError(err error) Logger {
 	modifyLogger := func(logger zerolog.Logger) zerolog.Logger {
-		if l.config.withStacktraceErrors {
-			return logger.With().Stack().Err(err).Logger()
+		ctx := logger.With()
+
+		// add the stack separately, zerolog Context.Err with Stack() enabled
+		// drops the error field entirely when ErrorStackMarshaler returns nil
+		// (any error without a pkg/errors stack trace)
+		if l.config.withStacktraceErrors && zerolog.ErrorStackMarshaler != nil {
+			if stack := zerolog.ErrorStackMarshaler(err); stack != nil {
+				ctx = ctx.Interface(zerolog.ErrorStackFieldName, stack)
+			}
 		}
 
-		return logger.With().Err(err).Logger()
+		// always attach the error field regardless of stack availability
+		return ctx.AnErr(zerolog.ErrorFieldName, err).Logger()
 	}
 
 	return newWithLoggers(
