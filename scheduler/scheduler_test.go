@@ -83,6 +83,10 @@ func Test_Scheduler(t *testing.T) {
 
 	clocks.Advance(time.Now())
 
-	require.Equal(t, int32(2), support.tickCalls.Load())
-	require.Equal(t, int32(3), support.hasNextCalls.Load())
+	// Advance only unblocks once the scheduler has received the tick from the
+	// channel, before it runs hasNext/tick, so poll until the batch settles
+	// instead of reading the counters in a race with the scheduler goroutine.
+	require.Eventually(t, func() bool {
+		return support.tickCalls.Load() == 2 && support.hasNextCalls.Load() == 3
+	}, time.Second, time.Millisecond)
 }

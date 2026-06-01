@@ -41,6 +41,8 @@ type Client interface {
 
 	Delete(ctx context.Context, objectName string) error
 
+	Copy(ctx context.Context, srcObjectName string, dstObjectName string) error
+
 	Download(ctx context.Context, objectName string) (io.ReadCloser, error)
 
 	DownloadFile(ctx context.Context, objectName string, filename string) error
@@ -218,6 +220,24 @@ func (c *Impl) Delete(ctx context.Context, objectName string) error {
 	object := c.client.Bucket(c.bucketName).Object(objectFullName)
 
 	return object.Delete(ctx)
+}
+
+func (c *Impl) Copy(ctx context.Context, srcObjectName string, dstObjectName string) error {
+	c.log.GetLogger(ctx).Infof("Copying object '%s' to '%s'", srcObjectName, dstObjectName)
+
+	if err := c.init(ctx); err != nil {
+		return err
+	}
+
+	bucket := c.client.Bucket(c.bucketName)
+	src := bucket.Object(c.getObjectFullName(srcObjectName))
+	dst := bucket.Object(c.getObjectFullName(dstObjectName))
+
+	if _, err := dst.CopierFrom(src).Run(ctx); err != nil {
+		return fmt.Errorf("gcs: copy '%s' to '%s': %w", srcObjectName, dstObjectName, err)
+	}
+
+	return nil
 }
 
 func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, error) {

@@ -46,6 +46,23 @@ func (p *StorageProvider) MkDir(_ context.Context, _ string) error {
 	return nil
 }
 
+func (p *StorageProvider) Copy(ctx context.Context, srcPath string, dstPath string) error {
+	return p.s3.Copy(ctx, srcPath, dstPath)
+}
+
+func (p *StorageProvider) Move(ctx context.Context, srcPath string, dstPath string) error {
+	// copy+delete onto the same key would delete the object; a self-move is a no-op
+	if srcPath == dstPath {
+		return nil
+	}
+
+	if err := p.s3.Copy(ctx, srcPath, dstPath); err != nil {
+		return err
+	}
+
+	return p.s3.Delete(ctx, srcPath)
+}
+
 func (p *StorageProvider) CreateMultipartUpload(ctx context.Context, path string) (storage.MultipartUpload, error) {
 	return p.s3.CreateMultipartUpload(ctx, path)
 }

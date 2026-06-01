@@ -59,6 +59,8 @@ type Client interface {
 	DeleteDir(ctx context.Context, objectName string) error
 	Delete(ctx context.Context, objectName string) error
 
+	Copy(ctx context.Context, srcObjectName string, dstObjectName string) error
+
 	Download(ctx context.Context, objectName string) (io.ReadCloser, error)
 	DownloadFile(ctx context.Context, objectName string, filename string) error
 
@@ -189,6 +191,25 @@ func (c *Impl) Delete(ctx context.Context, objectName string) error {
 
 	if err := c.client.RemoveObject(ctx, c.bucketName, objectFullName, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("s3: delete '%s': %w", objectFullName, err)
+	}
+
+	return nil
+}
+
+func (c *Impl) Copy(ctx context.Context, srcObjectName string, dstObjectName string) error {
+	c.log.GetLogger(ctx).Infof("Copying object '%s' to '%s'", srcObjectName, dstObjectName)
+
+	if err := c.init(ctx); err != nil {
+		return err
+	}
+
+	src := minio.CopySrcOptions{Bucket: c.bucketName, Object: c.getObjectFullName(srcObjectName)}
+	dst := minio.CopyDestOptions{Bucket: c.bucketName, Object: c.getObjectFullName(dstObjectName)}
+
+	// minio CopyObject performs a server-side copy (single PUT-copy up to 5 GiB);
+	// larger objects would need ComposeObject, out of scope for current artifacts
+	if _, err := c.client.CopyObject(ctx, dst, src); err != nil {
+		return fmt.Errorf("s3: copy '%s' to '%s': %w", srcObjectName, dstObjectName, err)
 	}
 
 	return nil
