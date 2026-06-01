@@ -51,6 +51,11 @@ func (p *StorageProvider) Copy(ctx context.Context, srcPath string, dstPath stri
 }
 
 func (p *StorageProvider) Move(ctx context.Context, srcPath string, dstPath string) error {
+	// copy+delete onto the same key would delete the object; a self-move is a no-op
+	if srcPath == dstPath {
+		return nil
+	}
+
 	if err := p.s3.Copy(ctx, srcPath, dstPath); err != nil {
 		return err
 	}

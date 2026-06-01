@@ -67,8 +67,19 @@ func ensureGcsBucket(t *testing.T, ctx context.Context, bucket string) {
 
 	defer func() { _ = raw.Close() }()
 
-	// fake-gcs accepts any project id; ignore an already-existing bucket
-	_ = raw.Bucket(bucket).Create(ctx, "test-project", nil)
+	b := raw.Bucket(bucket)
+
+	// reuse an existing bucket; only create when missing so real setup failures
+	// (network/emulator misconfig) surface here instead of later in the test
+	_, err = b.Attrs(ctx)
+	if err == nil {
+		return
+	}
+
+	require.ErrorIs(t, err, gstorage.ErrBucketNotExist)
+
+	// fake-gcs accepts any project id
+	require.NoError(t, b.Create(ctx, "test-project", nil))
 }
 
 func getenvDefault(key, def string) string {

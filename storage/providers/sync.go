@@ -228,6 +228,12 @@ func (s *SyncImpl) Copy(ctx context.Context, srcPath string, dstPath string) err
 }
 
 func (s *SyncImpl) Move(ctx context.Context, srcPath string, dstPath string) error {
+	// a self-move would copy each object onto itself and then delete the source,
+	// destroying it; treat identical paths as a no-op
+	if srcPath == dstPath {
+		return nil
+	}
+
 	// copy to every storage first (Copy rolls back partial failures), then delete
 	// the sources only after all copies succeed. a per-storage entry.Move could
 	// otherwise delete the source on one storage and fail on another, leaving the

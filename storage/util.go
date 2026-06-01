@@ -3,14 +3,29 @@ package storage
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/pixality-inc/golang-core/logger"
 )
 
+// sameStorage reports whether dst and src are the same storage instance, so the
+// caller can take the backend-native copy/move fast path. Comparing interface
+// values with == panics when their (shared) concrete type is not comparable —
+// e.g. a struct holding a map or slice — so guard on Comparable and otherwise
+// fall back to streaming rather than crash a public caller.
+func sameStorage(dst, src Storage) bool {
+	t := reflect.TypeOf(dst)
+	if t == nil || t != reflect.TypeOf(src) || !t.Comparable() {
+		return false
+	}
+
+	return dst == src
+}
+
 func Copy(ctx context.Context, dst Storage, dstFilename string, src Storage, srcFilename string) error {
 	// same storage: use the backend-native server-side copy instead of
 	// streaming the object through the application
-	if dst == src {
+	if sameStorage(dst, src) {
 		return dst.Copy(ctx, srcFilename, dstFilename)
 	}
 
@@ -36,7 +51,7 @@ func Copy(ctx context.Context, dst Storage, dstFilename string, src Storage, src
 
 func Move(ctx context.Context, dst Storage, dstFilename string, src Storage, srcFilename string) error {
 	// same storage: use the backend-native server-side move
-	if dst == src {
+	if sameStorage(dst, src) {
 		return dst.Move(ctx, srcFilename, dstFilename)
 	}
 

@@ -194,6 +194,12 @@ func (p *OsProvider) Copy(ctx context.Context, srcPath string, dstPath string) e
 }
 
 func (p *OsProvider) Move(ctx context.Context, srcPath string, dstPath string) error {
+	// moving onto the same path is a no-op; the copy+delete fallback below would
+	// otherwise risk removing the source
+	if srcPath == dstPath {
+		return nil
+	}
+
 	srcFull := p.getFullPath(srcPath)
 	dstFull := p.getFullPath(dstPath)
 

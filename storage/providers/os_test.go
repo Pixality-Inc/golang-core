@@ -111,6 +111,24 @@ func TestOsProvider_Move_relocatesFile(t *testing.T) {
 	require.False(t, srcExists)
 }
 
+func TestOsProvider_Move_samePathIsNoop(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewOsProvider(root)
+
+	want := []byte("keep-me")
+	require.NoError(t, store.Write(ctx, "a/in.bin", bytes.NewReader(want)))
+
+	// moving a file onto itself must not destroy it
+	require.NoError(t, store.Move(ctx, "a/in.bin", "a/in.bin"))
+
+	got, err := os.ReadFile(filepath.Join(root, "a/in.bin"))
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
 func TestOsProvider_ReadFile_notFound(t *testing.T) {
 	t.Parallel()
 

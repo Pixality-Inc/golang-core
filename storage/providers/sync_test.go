@@ -77,6 +77,21 @@ func TestSyncStorage_Move_relocatesOnBothRoots(t *testing.T) {
 	requireMissingOnBothRoots(t, root1, root2, "src.bin")
 }
 
+func TestSyncStorage_Move_samePathIsNoop(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	syncStore, root1, root2 := newDualOsSyncStorage(t)
+
+	want := []byte("keep-me")
+	require.NoError(t, syncStore.Write(ctx, "src.bin", bytes.NewReader(want)))
+
+	// a self-move must not copy-then-delete the object on any storage
+	require.NoError(t, syncStore.Move(ctx, "src.bin", "src.bin"))
+
+	requireSameFileOnBothRoots(t, root1, root2, "src.bin", want)
+}
+
 func TestSyncStorage_FileExists_falseWhenMissingOnBoth(t *testing.T) {
 	t.Parallel()
 
