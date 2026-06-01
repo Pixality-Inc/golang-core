@@ -256,6 +256,20 @@ func (mr *MockProviderMockRecorder) CompleteMultipartUpload(ctx, path, upload, c
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteMultipartUpload", reflect.TypeOf((*MockProvider)(nil).CompleteMultipartUpload), ctx, path, upload, chunks)
 }
 
+// Copy mocks base method.
+func (m *MockProvider) Copy(ctx context.Context, srcPath, dstPath string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Copy", ctx, srcPath, dstPath)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Copy indicates an expected call of Copy.
+func (mr *MockProviderMockRecorder) Copy(ctx, srcPath, dstPath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Copy", reflect.TypeOf((*MockProvider)(nil).Copy), ctx, srcPath, dstPath)
+}
+
 // CreateMultipartUpload mocks base method.
 func (m *MockProvider) CreateMultipartUpload(ctx context.Context, path string) (storage.MultipartUpload, error) {
 	m.ctrl.T.Helper()
@@ -326,6 +340,20 @@ func (m *MockProvider) MkDir(ctx context.Context, path string) error {
 func (mr *MockProviderMockRecorder) MkDir(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkDir", reflect.TypeOf((*MockProvider)(nil).MkDir), ctx, path)
+}
+
+// Move mocks base method.
+func (m *MockProvider) Move(ctx context.Context, srcPath, dstPath string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Move", ctx, srcPath, dstPath)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Move indicates an expected call of Move.
+func (mr *MockProviderMockRecorder) Move(ctx, srcPath, dstPath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Move", reflect.TypeOf((*MockProvider)(nil).Move), ctx, srcPath, dstPath)
 }
 
 // ReadDir mocks base method.
@@ -492,6 +520,20 @@ func (mr *MockStorageMockRecorder) CompleteMultipartUpload(ctx, path, upload, ch
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteMultipartUpload", reflect.TypeOf((*MockStorage)(nil).CompleteMultipartUpload), ctx, path, upload, chunks)
 }
 
+// Copy mocks base method.
+func (m *MockStorage) Copy(ctx context.Context, srcPath, dstPath string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Copy", ctx, srcPath, dstPath)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Copy indicates an expected call of Copy.
+func (mr *MockStorageMockRecorder) Copy(ctx, srcPath, dstPath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Copy", reflect.TypeOf((*MockStorage)(nil).Copy), ctx, srcPath, dstPath)
+}
+
 // CreateMultipartUpload mocks base method.
 func (m *MockStorage) CreateMultipartUpload(ctx context.Context, path string) (storage.MultipartUpload, error) {
 	m.ctrl.T.Helper()
@@ -591,6 +633,20 @@ func (m *MockStorage) MkDir(ctx context.Context, path string) error {
 func (mr *MockStorageMockRecorder) MkDir(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkDir", reflect.TypeOf((*MockStorage)(nil).MkDir), ctx, path)
+}
+
+// Move mocks base method.
+func (m *MockStorage) Move(ctx context.Context, srcPath, dstPath string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Move", ctx, srcPath, dstPath)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Move indicates an expected call of Move.
+func (mr *MockStorageMockRecorder) Move(ctx, srcPath, dstPath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Move", reflect.TypeOf((*MockStorage)(nil).Move), ctx, srcPath, dstPath)
 }
 
 // ReadDir mocks base method.

@@ -8,6 +8,12 @@ import (
 )
 
 func Copy(ctx context.Context, dst Storage, dstFilename string, src Storage, srcFilename string) error {
+	// same storage: use the backend-native server-side copy instead of
+	// streaming the object through the application
+	if dst == src {
+		return dst.Copy(ctx, srcFilename, dstFilename)
+	}
+
 	log := logger.GetLogger(ctx)
 
 	srcFile, err := src.ReadFile(ctx, srcFilename)
@@ -29,6 +35,11 @@ func Copy(ctx context.Context, dst Storage, dstFilename string, src Storage, src
 }
 
 func Move(ctx context.Context, dst Storage, dstFilename string, src Storage, srcFilename string) error {
+	// same storage: use the backend-native server-side move
+	if dst == src {
+		return dst.Move(ctx, srcFilename, dstFilename)
+	}
+
 	err := Copy(ctx, dst, dstFilename, src, srcFilename)
 	if err != nil {
 		return fmt.Errorf("copy file %s to %s: %w", srcFilename, dstFilename, err)

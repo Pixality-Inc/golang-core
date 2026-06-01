@@ -131,6 +131,93 @@ func (p *OsProvider) MkDir(_ context.Context, path string) error {
 	return nil
 }
 
+func (p *OsProvider) Copy(ctx context.Context, srcPath string, dstPath string) error {
+	srcFull := p.getFullPath(srcPath)
+	dstFull := p.getFullPath(dstPath)
+
+	srcFile, err := os.Open(srcFull)
+	if err != nil {
+		return fmt.Errorf("open source %s: %w", srcPath, err)
+	}
+
+	defer func() {
+		if fErr := srcFile.Close(); fErr != nil {
+			logger.GetLogger(ctx).WithError(fErr).Errorf("failed to close source '%s'", srcFull)
+		}
+	}()
+
+	dstDir := filepath.Dir(dstFull)
+	if err = os.MkdirAll(dstDir, os.ModePerm); err != nil {
+		return fmt.Errorf("create dir %s for file %s: %w", dstDir, dstPath, err)
+	}
+
+	// copy into a sibling temp file and atomically rename, mirroring
+	// CompleteMultipartUpload so a crash never leaves a partial destination
+	tmpFile, err := os.CreateTemp(dstDir, ".copy-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+
+	tmpName := tmpFile.Name()
+
+	defer func() {
+		if rmErr := os.Remove(tmpName); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			logger.GetLogger(ctx).WithError(rmErr).Errorf("failed to remove temp file '%s'", tmpName)
+		}
+	}()
+
+	if _, err = io.Copy(tmpFile, srcFile); err != nil {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.GetLogger(ctx).WithError(closeErr).Errorf("failed to close temp file '%s'", tmpName)
+		}
+
+		return fmt.Errorf("copy %s to %s: %w", srcPath, dstPath, err)
+	}
+
+	if err = tmpFile.Sync(); err != nil {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.GetLogger(ctx).WithError(closeErr).Errorf("failed to close temp file '%s'", tmpName)
+		}
+
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err = os.Rename(tmpName, dstFull); err != nil {
+		return fmt.Errorf("rename temp file to destination: %w", err)
+	}
+
+	return nil
+}
+
+func (p *OsProvider) Move(ctx context.Context, srcPath string, dstPath string) error {
+	srcFull := p.getFullPath(srcPath)
+	dstFull := p.getFullPath(dstPath)
+
+	dstDir := filepath.Dir(dstFull)
+	if err := os.MkdirAll(dstDir, os.ModePerm); err != nil {
+		return fmt.Errorf("create dir %s for file %s: %w", dstDir, dstPath, err)
+	}
+
+	if err := os.Rename(srcFull, dstFull); err == nil {
+		return nil
+	}
+
+	// rename can fail across devices, fall back to copy + delete source
+	if err := p.Copy(ctx, srcPath, dstPath); err != nil {
+		return err
+	}
+
+	if err := os.Remove(srcFull); err != nil {
+		return fmt.Errorf("remove source %s after move: %w", srcPath, err)
+	}
+
+	return nil
+}
+
 func (p *OsProvider) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {
 	return storage.NewMultipartUpload(uuid.New().String()), nil
 }

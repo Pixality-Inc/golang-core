@@ -60,6 +60,12 @@ type Provider interface {
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 	MkDir(ctx context.Context, path string) error
 
+	// Copy duplicates an object inside the same storage, server-side where the
+	// backend supports it. srcPath must exist; dstPath is overwritten if present.
+	Copy(ctx context.Context, srcPath string, dstPath string) error
+	// Move relocates an object inside the same storage (copy + delete source).
+	Move(ctx context.Context, srcPath string, dstPath string) error
+
 	CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error)
 	UploadMultipartChunk(ctx context.Context, path string, upload MultipartUpload, chunkNumber int, body io.Reader, size int64) (MultipartChunk, error)
 	CompleteMultipartUpload(ctx context.Context, path string, upload MultipartUpload, chunks []MultipartChunk) error
@@ -83,6 +89,12 @@ type Storage interface {
 	DownloadFile(ctx context.Context, path string, filename string) error
 	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 	MkDir(ctx context.Context, path string) error
+
+	// Copy duplicates an object inside the same storage, server-side where the
+	// backend supports it. srcPath must exist; dstPath is overwritten if present.
+	Copy(ctx context.Context, srcPath string, dstPath string) error
+	// Move relocates an object inside the same storage (copy + delete source).
+	Move(ctx context.Context, srcPath string, dstPath string) error
 
 	CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error)
 	UploadMultipartChunk(ctx context.Context, path string, upload MultipartUpload, chunkNumber int, body io.Reader, size int64) (MultipartChunk, error)

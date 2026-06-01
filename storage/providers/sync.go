@@ -201,6 +201,50 @@ func (s *SyncImpl) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
+func (s *SyncImpl) Copy(ctx context.Context, srcPath string, dstPath string) error {
+	if len(s.storages) == 0 {
+		return fmt.Errorf("%w: no storages configured", ErrStorageFailed)
+	}
+
+	log := logger.GetLogger(ctx)
+
+	var copied []storage.Storage
+
+	for _, entry := range s.storages {
+		if err := entry.Copy(ctx, srcPath, dstPath); err != nil {
+			for _, w := range copied {
+				if delErr := w.DeleteFile(ctx, dstPath); delErr != nil {
+					log.WithError(delErr).Errorf("sync storage rollback: failed to delete %s", dstPath)
+				}
+			}
+
+			return fmt.Errorf("%w: failed to copy %s to %s: %w", ErrStorageFailed, srcPath, dstPath, err)
+		}
+
+		copied = append(copied, entry)
+	}
+
+	return nil
+}
+
+func (s *SyncImpl) Move(ctx context.Context, srcPath string, dstPath string) error {
+	// copy to every storage first (Copy rolls back partial failures), then delete
+	// the sources only after all copies succeed. a per-storage entry.Move could
+	// otherwise delete the source on one storage and fail on another, leaving the
+	// storages permanently inconsistent with no possible rollback
+	if err := s.Copy(ctx, srcPath, dstPath); err != nil {
+		return err
+	}
+
+	for _, entry := range s.storages {
+		if err := entry.DeleteFile(ctx, srcPath); err != nil {
+			return fmt.Errorf("%w: failed to delete source %s after move: %w", ErrStorageFailed, srcPath, err)
+		}
+	}
+
+	return nil
+}
+
 // syncMultipartUpload carries the per-storage uploads in order so that
 // subsequent calls can dispatch to each child storage without keeping
 // local state. Its Id() is a JSON-encoded copy of the per-storage ids,

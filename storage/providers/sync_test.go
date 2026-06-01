@@ -45,6 +45,38 @@ func requireMissingOnBothRoots(t *testing.T, root1, root2, rel string) {
 	require.True(t, os.IsNotExist(err))
 }
 
+func TestSyncStorage_Copy_duplicatesOnBothRoots(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	syncStore, root1, root2 := newDualOsSyncStorage(t)
+
+	want := []byte("synced")
+	require.NoError(t, syncStore.Write(ctx, "src.bin", bytes.NewReader(want)))
+
+	require.NoError(t, syncStore.Copy(ctx, "src.bin", "dst.bin"))
+
+	requireSameFileOnBothRoots(t, root1, root2, "dst.bin", want)
+	// copy keeps the source on both storages
+	requireSameFileOnBothRoots(t, root1, root2, "src.bin", want)
+}
+
+func TestSyncStorage_Move_relocatesOnBothRoots(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	syncStore, root1, root2 := newDualOsSyncStorage(t)
+
+	want := []byte("moved")
+	require.NoError(t, syncStore.Write(ctx, "src.bin", bytes.NewReader(want)))
+
+	require.NoError(t, syncStore.Move(ctx, "src.bin", "dst.bin"))
+
+	requireSameFileOnBothRoots(t, root1, root2, "dst.bin", want)
+	// move deletes the source on every storage
+	requireMissingOnBothRoots(t, root1, root2, "src.bin")
+}
+
 func TestSyncStorage_FileExists_falseWhenMissingOnBoth(t *testing.T) {
 	t.Parallel()
 

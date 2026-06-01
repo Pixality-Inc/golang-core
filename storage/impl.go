@@ -131,6 +131,22 @@ func (s *Impl) MkDir(ctx context.Context, path string) error {
 	return nil
 }
 
+func (s *Impl) Copy(ctx context.Context, srcPath string, dstPath string) error {
+	if err := s.provider.Copy(ctx, srcPath, dstPath); err != nil {
+		return fmt.Errorf("storage.Copy(%s -> %s): %w", srcPath, dstPath, err)
+	}
+
+	return nil
+}
+
+func (s *Impl) Move(ctx context.Context, srcPath string, dstPath string) error {
+	if err := s.provider.Move(ctx, srcPath, dstPath); err != nil {
+		return fmt.Errorf("storage.Move(%s -> %s): %w", srcPath, dstPath, err)
+	}
+
+	return nil
+}
+
 func (s *Impl) CreateMultipartUpload(ctx context.Context, path string) (MultipartUpload, error) {
 	upload, err := s.provider.CreateMultipartUpload(ctx, path)
 	if err != nil {

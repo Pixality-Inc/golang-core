@@ -57,6 +57,60 @@ func TestOsProvider_Write_ReadFile_roundTrip(t *testing.T) {
 	require.Equal(t, want, got)
 }
 
+func TestOsProvider_Copy_duplicatesFileAndKeepsSource(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewOsProvider(root)
+
+	want := []byte("artifact-bytes")
+	require.NoError(t, store.Write(ctx, "src/model.ksplat", bytes.NewReader(want)))
+
+	require.NoError(t, store.Copy(ctx, "src/model.ksplat", "dst/nested/model.ksplat"))
+
+	// destination carries identical content (parent dirs created)
+	got, err := os.ReadFile(filepath.Join(root, "dst/nested/model.ksplat"))
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+
+	// source is preserved
+	srcExists, err := store.FileExists(ctx, "src/model.ksplat")
+	require.NoError(t, err)
+	require.True(t, srcExists)
+}
+
+func TestOsProvider_Copy_missingSourceErrors(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := NewOsProvider(t.TempDir())
+
+	require.Error(t, store.Copy(ctx, "missing.bin", "dst.bin"))
+}
+
+func TestOsProvider_Move_relocatesFile(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewOsProvider(root)
+
+	want := []byte("payload")
+	require.NoError(t, store.Write(ctx, "a/in.bin", bytes.NewReader(want)))
+
+	require.NoError(t, store.Move(ctx, "a/in.bin", "b/out.bin"))
+
+	got, err := os.ReadFile(filepath.Join(root, "b/out.bin"))
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+
+	// source no longer exists after a move
+	srcExists, err := store.FileExists(ctx, "a/in.bin")
+	require.NoError(t, err)
+	require.False(t, srcExists)
+}
+
 func TestOsProvider_ReadFile_notFound(t *testing.T) {
 	t.Parallel()
 
