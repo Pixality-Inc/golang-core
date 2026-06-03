@@ -425,6 +425,33 @@ When a retry policy is configured, the client uses the `retry` package with the 
 - `ShouldRetry` does not retry on 4xx status codes except 429
 - when status code is zero it retries on network timeouts temporary errors and most non context errors
 
+#### Idempotency
+
+By default the client only retries **idempotent** requests, i.e. methods that are safe to repeat (`GET`, `HEAD`, `PUT`, `DELETE`, `OPTIONS`, `TRACE`). Non-idempotent requests (`POST`, `PATCH`) are **not** retried, so a request whose first attempt may already have reached the server (for example creating a resource) is not sent twice.
+
+To retry non-idempotent requests as well, enable the option on the retry policy. The method check runs before the per-attempt `ShouldRetry` check. It can be set in any of these ways:
+
+```go
+// programmatically
+config.RetryPolicyValue = &retry.ConfigYaml{
+    RetryNonIdempotentValue: true,
+}
+
+// or when building a policy
+retry.NewPolicy(retry.WithRetryNonIdempotent(true))
+```
+
+```yaml
+# via YAML config
+retry_policy:
+  retry_non_idempotent: true
+```
+
+```bash
+# via environment variable (RETRY_POLICY env-prefix + field env name)
+RETRY_POLICY_RETRY_NON_IDEMPOTENT=true
+```
+
 For more specific retry rules `retry.DoWithCondition` can be combined with custom logic instead of relying only on `ShouldRetry`.
 
 **Why does `Build()` exist?**
