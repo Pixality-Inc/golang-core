@@ -5,10 +5,39 @@ import (
 	"errors"
 	"math"
 	"net"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pixality-inc/golang-core/logger"
 )
+
+var idempotentMethods = map[string]struct{}{
+	http.MethodGet:     {},
+	http.MethodHead:    {},
+	http.MethodPut:     {},
+	http.MethodDelete:  {},
+	http.MethodOptions: {},
+	http.MethodTrace:   {},
+}
+
+func IsIdempotentMethod(method string) bool {
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	_, ok := idempotentMethods[strings.ToUpper(method)]
+
+	return ok
+}
+
+func ShouldRetryMethod(method string, policy Policy) bool {
+	if policy != nil && policy.RetryNonIdempotent() {
+		return true
+	}
+
+	return IsIdempotentMethod(method)
+}
 
 // ShouldRetry retries on 5xx, 429 status codes and network errors
 // does not retry on 4xx (except 429) or context errors

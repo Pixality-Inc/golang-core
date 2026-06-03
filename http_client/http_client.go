@@ -216,10 +216,11 @@ func (c *ClientImpl) Do(ctx context.Context, method, uri string, opts ...Request
 	cfg := applyOptions(opts...)
 
 	executeRequest := func() (Response, error) {
-		if c.config.RetryPolicy() != nil {
+		policy := c.config.RetryPolicy()
+		if policy != nil && retry.ShouldRetryMethod(method, policy) {
 			return retry.DoWithCondition(
 				ctx,
-				c.config.RetryPolicy(),
+				policy,
 				c.log,
 				func() (Response, error) {
 					return c.performRequest(ctx, method, uri, cfg)
