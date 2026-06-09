@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -303,6 +304,91 @@ func TestDirEntriesFromObjects(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fakeRoundTripper builds the response inline so the only *http.Response
+// produced through a call in the tests is the one returned by RoundTrip, whose
+// body the tests then close (keeping the bodyclose linter satisfied).
+type fakeRoundTripper struct {
+	header http.Header
+	err    error
+}
+
+func (f fakeRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	return &http.Response{StatusCode: http.StatusOK, Header: f.header, Body: http.NoBody}, nil
+}
+
+func headerWith(lastModified string, present bool) http.Header {
+	header := http.Header{}
+	if present {
+		header.Set(lastModifiedHeader, lastModified)
+	}
+
+	return header
+}
+
+func TestLastModifiedFallbackTransport(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.invalid/obj", nil)
+
+	t.Run("injects a parseable placeholder when the header is absent", func(t *testing.T) {
+		t.Parallel()
+
+		rt := lastModifiedFallbackTransport{base: fakeRoundTripper{header: headerWith("", false)}}
+
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		assert.Equal(t, placeholderLastModified, resp.Header.Get(lastModifiedHeader))
+
+		// the injected value must satisfy minio-go's primary RFC7231 format,
+		// otherwise ToObjectInfo would still abort the read it is meant to save
+		_, parseErr := time.Parse("Mon, 2 Jan 2006 15:04:05 GMT", resp.Header.Get(lastModifiedHeader))
+		require.NoError(t, parseErr)
+	})
+
+	t.Run("injects the placeholder when the header is present but empty", func(t *testing.T) {
+		t.Parallel()
+
+		rt := lastModifiedFallbackTransport{base: fakeRoundTripper{header: headerWith("", true)}}
+
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		assert.Equal(t, placeholderLastModified, resp.Header.Get(lastModifiedHeader))
+	})
+
+	t.Run("leaves a present Last-Modified untouched", func(t *testing.T) {
+		t.Parallel()
+
+		const presentLastModified = "Tue, 29 Apr 2014 18:30:38 GMT"
+
+		rt := lastModifiedFallbackTransport{base: fakeRoundTripper{header: headerWith(presentLastModified, true)}}
+
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		assert.Equal(t, presentLastModified, resp.Header.Get(lastModifiedHeader))
+	})
+
+	t.Run("propagates the underlying transport error", func(t *testing.T) {
+		t.Parallel()
+
+		rt := lastModifiedFallbackTransport{base: fakeRoundTripper{err: errTestDummy}}
+
+		resp, err := rt.RoundTrip(req)
+		if resp != nil {
+			defer func() { _ = resp.Body.Close() }()
+		}
+
+		require.ErrorIs(t, err, errTestDummy)
+		assert.Nil(t, resp)
+	})
 }
 
 // TestDirEntriesFromObjects_UnsortedWithinInputDocuments documents that

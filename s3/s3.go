@@ -514,6 +514,43 @@ func (c *Impl) AbortMultipartUpload(ctx context.Context, objectName string, uplo
 	return nil
 }
 
+const (
+	// lastModifiedHeader is the response header minio-go strictly parses into
+	// ObjectInfo.LastModified via ToObjectInfo.
+	lastModifiedHeader = "Last-Modified"
+
+	// placeholderLastModified is a valid RFC1123 timestamp that minio-go can
+	// parse. The concrete instant is irrelevant: it only stands in for responses
+	// that carry no Last-Modified header and whose modification time is never
+	// read by this package.
+	placeholderLastModified = "Thu, 01 Jan 1970 00:00:00 GMT"
+)
+
+// lastModifiedFallbackTransport works around S3-compatible backends that omit
+// the Last-Modified header on some responses (observed on SeaweedFS GET
+// replies, whose HEAD replies do carry it). minio-go treats an absent
+// Last-Modified as a hard error in ToObjectInfo, which aborts an otherwise
+// successful read mid-stream once the body is already being copied. None of
+// this package's callers consume the modification time returned by those reads,
+// so a constant placeholder is injected only when the header is missing,
+// leaving responses from compliant backends untouched.
+type lastModifiedFallbackTransport struct {
+	base http.RoundTripper
+}
+
+func (t lastModifiedFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	if resp.Header.Get(lastModifiedHeader) == "" {
+		resp.Header.Set(lastModifiedHeader, placeholderLastModified)
+	}
+
+	return resp, nil
+}
+
 // init is intentionally context-agnostic — minio.New does not perform a
 // round-trip, so there is nothing to cancel here. The ctx parameter is kept
 // on the signature only so call sites stay symmetric with the gcs sibling.
@@ -552,7 +589,7 @@ func (c *Impl) init(_ context.Context) error {
 		Creds:     credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
 		Secure:    secure,
 		Region:    c.region,
-		Transport: transport,
+		Transport: lastModifiedFallbackTransport{base: transport},
 	}
 
 	if c.usePathStyle {
