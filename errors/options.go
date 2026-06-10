@@ -27,7 +27,8 @@ type withParam struct {
 
 func WithParam(key string, value any) Option {
 	return &withParam{
-		key: key,
+		key:   key,
+		value: value,
 	}
 }
 
