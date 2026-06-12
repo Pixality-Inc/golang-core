@@ -25,6 +25,10 @@ type testConfig struct {
 	baseHeaders        Headers
 	useRequestId       bool
 	RetryPolicyValue   retry.Policy
+	followRedirects    bool
+	tlsRootCAFile      string
+	tlsClientCertFile  string
+	tlsClientKeyFile   string
 }
 
 // testConfigWithCB is testConfig with circuit breaker config
@@ -55,13 +59,13 @@ func (c *testConfig) WriteBufferSize() int                   { return DefaultWri
 func (c *testConfig) MaxResponseBodySize() int               { return 0 }
 func (c *testConfig) MaxConnDuration() time.Duration         { return DefaultMaxConnDuration }
 func (c *testConfig) StreamResponseBody() bool               { return false }
-func (c *testConfig) FollowRedirects() bool                  { return false }
+func (c *testConfig) FollowRedirects() bool                  { return c.followRedirects }
 func (c *testConfig) TLSMinVersion() uint16                  { return 0 }
 func (c *testConfig) TLSMaxVersion() uint16                  { return 0 }
 func (c *testConfig) TLSServerName() string                  { return "" }
-func (c *testConfig) TLSRootCAFile() string                  { return "" }
-func (c *testConfig) TLSClientCertFile() string              { return "" }
-func (c *testConfig) TLSClientKeyFile() string               { return "" }
+func (c *testConfig) TLSRootCAFile() string                  { return c.tlsRootCAFile }
+func (c *testConfig) TLSClientCertFile() string              { return c.tlsClientCertFile }
+func (c *testConfig) TLSClientKeyFile() string               { return c.tlsClientKeyFile }
 func (c *testConfig) CircuitBreaker() circuit_breaker.Config { return nil }
 
 func newTestConfig(baseUrl string) *testConfig {
