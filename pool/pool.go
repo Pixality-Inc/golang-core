@@ -89,7 +89,7 @@ func (p *Impl) Start(ctx context.Context) error {
 	p.channel = make(chan taskContext)
 
 	for i := range p.size {
-		go p.startWorker(ctx, i+1)
+		go p.startWorker(ctx, p.channel, i+1)
 	}
 
 	p.started = true
@@ -112,7 +112,7 @@ func (p *Impl) Stop() error {
 	return nil
 }
 
-func (p *Impl) startWorker(ctx context.Context, id uint32) {
+func (p *Impl) startWorker(ctx context.Context, channel <-chan taskContext, id uint32) {
 	log := p.log.GetLogger(ctx).WithField("worker_id", id)
 
 	for {
@@ -122,7 +122,7 @@ func (p *Impl) startWorker(ctx context.Context, id uint32) {
 
 			return
 
-		case taskCtx, ok := <-p.channel:
+		case taskCtx, ok := <-channel:
 			if !ok {
 				log.Warn("Channel closed")
 
