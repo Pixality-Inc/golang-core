@@ -26,9 +26,22 @@ func Copy(ctx context.Context, dst Storage, dstFilename string, src Storage, src
 	// same storage: use the backend-native server-side copy instead of
 	// streaming the object through the application
 	if sameStorage(dst, src) {
-		return dst.Copy(ctx, srcFilename, dstFilename)
+		err := dst.Copy(ctx, srcFilename, dstFilename)
+		if err == nil {
+			return nil
+		}
+
+		logger.GetLogger(ctx).WithError(err).Warnf(
+			"native storage copy failed from %s to %s, falling back to streaming copy",
+			srcFilename,
+			dstFilename,
+		)
 	}
 
+	return copyStreaming(ctx, dst, dstFilename, src, srcFilename)
+}
+
+func copyStreaming(ctx context.Context, dst Storage, dstFilename string, src Storage, srcFilename string) error {
 	log := logger.GetLogger(ctx)
 
 	srcFile, err := src.ReadFile(ctx, srcFilename)
