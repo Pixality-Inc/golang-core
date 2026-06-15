@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	errNativeCopy = errors.New("access denied")
+	errReadSource = errors.New("read source")
+	errWriteDest  = errors.New("write destination")
+)
+
 func newOsStorage(t *testing.T) (storage.Storage, string) {
 	t.Helper()
 
@@ -37,21 +43,25 @@ type copyFallbackStorage struct {
 
 type trackedReadCloser struct {
 	*bytes.Reader
+
 	closed *bool
 }
 
 func (r *trackedReadCloser) Close() error {
 	*r.closed = true
+
 	return nil
 }
 
 func (s *copyFallbackStorage) FileExists(_ context.Context, path string) (bool, error) {
 	_, ok := s.files[path]
+
 	return ok, nil
 }
 
 func (s *copyFallbackStorage) DeleteFile(_ context.Context, path string) error {
 	delete(s.files, path)
+
 	return nil
 }
 
@@ -73,6 +83,7 @@ func (s *copyFallbackStorage) Write(_ context.Context, path string, file io.Read
 	if s.files == nil {
 		s.files = map[string]string{}
 	}
+
 	s.files[path] = string(payload)
 
 	return nil
@@ -125,6 +136,7 @@ func (s *copyFallbackStorage) Copy(_ context.Context, srcPath string, dstPath st
 	if s.files == nil {
 		s.files = map[string]string{}
 	}
+
 	s.files[dstPath] = payload
 
 	return nil
@@ -203,7 +215,7 @@ func TestCopySameStorageFallsBackToStreamingWhenNativeCopyFails(t *testing.T) {
 	ctx := context.Background()
 	store := &copyFallbackStorage{
 		files:         map[string]string{"src": "payload"},
-		nativeCopyErr: errors.New("access denied"),
+		nativeCopyErr: errNativeCopy,
 	}
 
 	require.NoError(t, storage.Copy(ctx, store, "dst", store, "src"))
@@ -219,16 +231,15 @@ func TestCopyStreamingFallbackReturnsReadFileError(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	readErr := errors.New("read source")
 	store := &copyFallbackStorage{
 		files:         map[string]string{"src": "payload"},
-		nativeCopyErr: errors.New("access denied"),
-		readErr:       readErr,
+		nativeCopyErr: errNativeCopy,
+		readErr:       errReadSource,
 	}
 
 	err := storage.Copy(ctx, store, "dst", store, "src")
 
-	require.ErrorIs(t, err, readErr)
+	require.ErrorIs(t, err, errReadSource)
 	require.Equal(t, 1, store.nativeCopyCalls)
 	require.Equal(t, 1, store.readFileCalls)
 	require.Zero(t, store.writeCalls)
@@ -239,16 +250,15 @@ func TestCopyStreamingFallbackReturnsWriteErrorAndClosesSource(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	writeErr := errors.New("write destination")
 	store := &copyFallbackStorage{
 		files:         map[string]string{"src": "payload"},
-		nativeCopyErr: errors.New("access denied"),
-		writeErr:      writeErr,
+		nativeCopyErr: errNativeCopy,
+		writeErr:      errWriteDest,
 	}
 
 	err := storage.Copy(ctx, store, "dst", store, "src")
 
-	require.ErrorIs(t, err, writeErr)
+	require.ErrorIs(t, err, errWriteDest)
 	require.Equal(t, 1, store.nativeCopyCalls)
 	require.Equal(t, 1, store.readFileCalls)
 	require.Equal(t, 1, store.writeCalls)
