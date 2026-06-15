@@ -51,7 +51,7 @@ func (l *Wrapper) withArgs(msg string, keyvals ...any) (Logger, []any) {
 		for i := 0; i < len(keyvals); i += 2 {
 			switch v := keyvals[i].(type) {
 			case string:
-				entry = entry.WithField(v, keyvals[i+1])
+				entry = entry.WithField(v, keyvals[i+1]) //nolint:gosec // i+1 < len(keyvals) guaranteed by the %2 check above
 			default:
 				failed = true
 			}
