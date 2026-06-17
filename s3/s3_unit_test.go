@@ -306,6 +306,17 @@ func TestDirEntriesFromObjects(t *testing.T) {
 	}
 }
 
+func TestNewS3Transport(t *testing.T) {
+	t.Parallel()
+
+	tr := newS3Transport()
+
+	require.NotNil(t, tr)
+	assert.Equal(t, sourceResponseHeaderTimeout, tr.ResponseHeaderTimeout,
+		"a backend that stalls before the first response byte must time out, not block forever")
+	assert.True(t, tr.DisableCompression, "responses must reach backends byte-for-byte")
+}
+
 // fakeRoundTripper builds the response inline so the only *http.Response
 // produced through a call in the tests is the one returned by RoundTrip, whose
 // body the tests then close (keeping the bodyclose linter satisfied).
@@ -374,6 +385,21 @@ func TestLastModifiedFallbackTransport(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = resp.Body.Close() })
 		assert.Equal(t, presentLastModified, resp.Header.Get(lastModifiedHeader))
+	})
+
+	t.Run("leaves a non-GET response untouched when the header is absent", func(t *testing.T) {
+		t.Parallel()
+
+		// HEAD/Stat is the only path through which a real modification time could
+		// reach a caller, so a missing Last-Modified there must stay a loud error
+		// rather than be masked by the placeholder.
+		headReq := httptest.NewRequestWithContext(context.Background(), http.MethodHead, "https://example.invalid/obj", nil)
+		rt := lastModifiedFallbackTransport{base: fakeRoundTripper{header: headerWith("", false)}}
+
+		resp, err := rt.RoundTrip(headReq)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		assert.Empty(t, resp.Header.Get(lastModifiedHeader))
 	})
 
 	t.Run("propagates the underlying transport error", func(t *testing.T) {

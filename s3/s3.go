@@ -530,10 +530,16 @@ const (
 // the Last-Modified header on some responses (observed on SeaweedFS GET
 // replies, whose HEAD replies do carry it). minio-go treats an absent
 // Last-Modified as a hard error in ToObjectInfo, which aborts an otherwise
-// successful read mid-stream once the body is already being copied. None of
-// this package's callers consume the modification time returned by those reads,
-// so a constant placeholder is injected only when the header is missing,
-// leaving responses from compliant backends untouched.
+// successful read mid-stream once the body is already being copied. No caller
+// in this package consumes the modification time parsed from a GET response, so
+// a constant placeholder is injected only for GET responses that lack the
+// header.
+//
+// The fallback is deliberately scoped to GET: HEAD/Stat is the path through
+// which a real modification time could ever reach a caller (e.g. ReadDir reads
+// it, though from the ListObjects XML body rather than these headers), so those
+// responses are left untouched and a genuinely missing Last-Modified there
+// stays a loud error instead of being masked by the placeholder.
 type lastModifiedFallbackTransport struct {
 	base http.RoundTripper
 }
@@ -544,11 +550,55 @@ func (t lastModifiedFallbackTransport) RoundTrip(req *http.Request) (*http.Respo
 		return resp, err
 	}
 
-	if resp.Header.Get(lastModifiedHeader) == "" {
+	if req.Method == http.MethodGet && resp.Header.Get(lastModifiedHeader) == "" {
 		resp.Header.Set(lastModifiedHeader, placeholderLastModified)
 	}
 
 	return resp, nil
+}
+
+// sourceResponseHeaderTimeout bounds how long a request waits for the backend
+// to start sending its response headers. It restores the value minio-go uses in
+// its own DefaultTransport (time.Minute); the custom transport below, built for
+// DisableCompression, would otherwise leave this unset (0 = wait forever).
+// SeaweedFS was observed to intermittently stall a GET before the first response
+// byte and never recover on that connection, which without a bound blocks the
+// caller indefinitely; the timeout turns that into an error that minio-go
+// retries, usually landing on a healthy window.
+//
+// Scope: this bounds only the time to response headers. The clock starts after
+// the request body is fully written, so it caps neither a slow upload body nor
+// the streaming read of the response body. Server-side operations that return
+// headers promptly and then stream (CopyObject sends 200 then keep-alive
+// whitespace) are unaffected. Matching minio-go's own default keeps every
+// operation that works under a vanilla minio client working here too.
+const sourceResponseHeaderTimeout = time.Minute
+
+// newS3Transport builds the *http.Transport shared by the minio client.
+//
+// DisableCompression is set so net/http neither advertises Accept-Encoding: gzip
+// nor transparently gunzips responses. Objects with Content-Encoding: gzip (e.g.
+// .csv.gz served to browsers) must reach our backends byte-for-byte; the header
+// is a contract with the frontend, not an instruction to our backends.
+// Constructing fresh here (instead of cloning http.DefaultTransport) keeps us
+// independent of process-wide transport wrappers (otelhttp, datadog, etc.).
+//
+// ResponseHeaderTimeout is honored on HTTP/1 connections, which is what the
+// affected backend (SeaweedFS) uses; net/http ignores it on HTTP/2, exactly as
+// minio-go's own DefaultTransport does. Healthy backends that negotiate HTTP/2
+// (e.g. Hetzner) were never the stalling backend, so this is not a regression.
+func newS3Transport() *http.Transport {
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          256,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		DisableCompression:    true,
+		ResponseHeaderTimeout: sourceResponseHeaderTimeout,
+	}
 }
 
 // init is intentionally context-agnostic — minio.New does not perform a
@@ -567,29 +617,11 @@ func (c *Impl) init(_ context.Context) error {
 		return err
 	}
 
-	// Build our own *http.Transport with DisableCompression: true so net/http
-	// neither advertises Accept-Encoding: gzip nor transparently gunzips
-	// responses. Objects with Content-Encoding: gzip (e.g. .csv.gz served to
-	// browsers) must reach our backends byte-for-byte; the header is a contract
-	// with the frontend, not an instruction to our backends. Constructing fresh
-	// here (instead of cloning http.DefaultTransport) keeps us independent of
-	// process-wide transport wrappers (otelhttp, datadog, etc.).
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          256,
-		MaxIdleConnsPerHost:   16,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    true,
-	}
-
 	opts := &minio.Options{
 		Creds:     credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
 		Secure:    secure,
 		Region:    c.region,
-		Transport: lastModifiedFallbackTransport{base: transport},
+		Transport: lastModifiedFallbackTransport{base: newS3Transport()},
 	}
 
 	if c.usePathStyle {
