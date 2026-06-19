@@ -238,7 +238,17 @@ func TestFlow(t *testing.T) {
 	}
 
 	newDefaultEnv := func() *flow.Env {
-		return flow.NewEnv("", make(map[string]any))
+		flowEnv := flow.NewEnv(
+			"",
+			make(map[string]any),
+			flow.WithEnv("GLOBAL_ENV", "GLOBAL_ENV_VALUE"),
+			flow.WithEnvs(map[string]string{
+				"GLOBAL_ENV_A": "AAA",
+				"GLOBAL_ENV_B": "BBB",
+			}),
+		)
+
+		return flowEnv
 	}
 
 	newEnvWithWorkDir := func(workDir string) *flow.Env {
@@ -905,6 +915,40 @@ func TestFlow(t *testing.T) {
 			wantResult: &flow.Result{
 				ActionsResponses: map[string]*flow.ActionResponse{
 					"test": flow.NewActionResponse().WithStdout("foo\n"),
+				},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "global_env",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testPrintEnvCommandToRun, "GLOBAL_ENV"),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithStdout("GLOBAL_ENV_VALUE\n"),
+				},
+			},
+			wantResultLen: 1,
+		},
+		{
+			name: "global_envs",
+			actions: []flow.Action{
+				flow.NewAction("test").
+					WithCommand(testPrintEnvCommandToRun, "GLOBAL_ENV_A"),
+			},
+			env:                defaultEnv,
+			templateDriverMock: noTemplateDriverMock,
+			scriptDriverMock:   noScriptDriverMock,
+			localStorageMock:   noLocalStorageMock,
+			wantResult: &flow.Result{
+				ActionsResponses: map[string]*flow.ActionResponse{
+					"test": flow.NewActionResponse().WithStdout("AAA\n"),
 				},
 			},
 			wantResultLen: 1,
