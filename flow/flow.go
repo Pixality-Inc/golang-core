@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -311,7 +312,7 @@ func (f *Impl) runActionTrigger(ctx context.Context, env *Env, action Action) (*
 	return NewActionResponse().WithResult(string(buf)), nil
 }
 
-//nolint:cyclop,gocognit,gocyclo
+//nolint:cyclop,gocognit,gocyclo,maintidx
 func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*ActionResponse, error) {
 	log := f.log.GetLogger(ctx)
 
@@ -397,8 +398,15 @@ func (f *Impl) runActionCommand(ctx context.Context, env *Env, action Action) (*
 		cliOptions = append(cliOptions, cli.WithWorkDir(workDir))
 	}
 
-	if len(cmdEnvs) > 0 {
-		cliOptions = append(cliOptions, cli.WithEnvs(cmdEnvs))
+	hasEnv := len(cmdEnvs) > 0 || len(env.Env) > 0
+
+	if hasEnv {
+		envsMap := make(map[string]string)
+
+		maps.Copy(envsMap, env.Env)
+		maps.Copy(envsMap, cmdEnvs)
+
+		cliOptions = append(cliOptions, cli.WithEnvs(envsMap))
 	}
 
 	if f.logsDir != nil {
