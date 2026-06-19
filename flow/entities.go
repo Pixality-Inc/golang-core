@@ -6,12 +6,20 @@ type EnvOption func(env *Env)
 
 func WithEnv(name string, value string) EnvOption {
 	return func(env *Env) {
+		if env.Env == nil {
+			env.Env = make(map[string]string)
+		}
+
 		env.Env[name] = value
 	}
 }
 
 func WithEnvs(envs map[string]string) EnvOption {
 	return func(env *Env) {
+		if env.Env == nil {
+			env.Env = make(map[string]string)
+		}
+
 		maps.Copy(env.Env, envs)
 	}
 }
