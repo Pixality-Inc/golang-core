@@ -5,7 +5,6 @@ go 1.26
 toolchain go1.26.3
 
 require (
-	cloud.google.com/go/auth v0.20.0
 	cloud.google.com/go/storage v1.62.1
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/emicklei/proto v1.14.3
@@ -21,7 +20,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/joho/godotenv v1.5.1
 	github.com/josephburnett/jd/v2 v2.5.0
 	github.com/minio/minio-go/v7 v7.1.0
 	github.com/nexus-rpc/sdk-go v0.6.0
@@ -52,6 +50,7 @@ require (
 require (
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go v0.123.0 // indirect
+	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.7.0 // indirect
@@ -88,6 +87,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
