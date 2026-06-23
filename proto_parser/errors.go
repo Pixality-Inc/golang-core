@@ -12,4 +12,6 @@ var (
 	ErrUnknownProtobufEnumField = errors.New("unknown protobuf enum field")
 	ErrProcessMessage           = errors.New("process message")
 	ErrProcessEnum              = errors.New("process enum")
+	ErrProcessField             = errors.New("process field")
+	ErrOneOfFieldNotInsideOneOf = errors.New("oneof field not inside oneof")
 )

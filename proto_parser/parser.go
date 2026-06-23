@@ -144,56 +144,13 @@ func (p *ParserImpl) processMessage(
 		case *proto.Comment:
 			// skip
 
-		case *proto.MapField:
-			options := make([]FieldOption, 0)
-
-			options = append(
-				options,
-				WithIsMap(),
-				WithAdditionalType(field.KeyType),
-			)
-
-			for _, opt := range field.Options {
-				options = append(options, WithAttribute(opt.Name, opt.Constant.Source))
-			}
-
-			if field.InlineComment != nil {
-				options = append(options, WithComment(strings.TrimSpace(field.InlineComment.Message())))
-			}
-
-			fields = append(fields, NewField(
-				field.Name,
-				field.Type,
-				options...,
-			))
-
-		case *proto.NormalField:
-			options := make([]FieldOption, 0)
-
-			for _, opt := range field.Options {
-				options = append(options, WithAttribute(opt.Name, opt.Constant.Source))
-			}
-
-			if field.InlineComment != nil {
-				options = append(options, WithComment(strings.TrimSpace(field.InlineComment.Message())))
-			}
-
-			if field.Optional {
-				options = append(options, WithIsOptional())
-			}
-
-			if field.Repeated {
-				options = append(options, WithIsRepeated())
-			}
-
-			fields = append(fields, NewField(
-				field.Name,
-				field.Type,
-				options...,
-			))
-
 		default:
-			return fmt.Errorf("%w: %#v", ErrUnknownProtobufField, field)
+			fieldElement, err := p.protoToField(ctx, field, false)
+			if err != nil {
+				return fmt.Errorf("%w: %T", ErrProcessField, field)
+			}
+
+			fields = append(fields, fieldElement)
 		}
 	}
 
@@ -210,6 +167,113 @@ func (p *ParserImpl) processMessage(
 	state.models[fullName] = model
 
 	return nil
+}
+
+func (p *ParserImpl) protoToField(
+	ctx context.Context,
+	protoField proto.Visitee,
+	isInsideOneOf bool,
+) (Field, error) {
+	switch field := protoField.(type) {
+	case *proto.MapField:
+		options := make([]FieldOption, 0)
+
+		options = append(
+			options,
+			WithIsMap(),
+			WithAdditionalType(field.KeyType),
+		)
+
+		for _, opt := range field.Options {
+			options = append(options, WithAttribute(opt.Name, opt.Constant.Source))
+		}
+
+		if field.InlineComment != nil {
+			options = append(options, WithComment(strings.TrimSpace(field.InlineComment.Message())))
+		}
+
+		return NewField(
+			field.Name,
+			field.Type,
+			options...,
+		), nil
+
+	case *proto.NormalField:
+		options := make([]FieldOption, 0)
+
+		for _, opt := range field.Options {
+			options = append(options, WithAttribute(opt.Name, opt.Constant.Source))
+		}
+
+		if field.InlineComment != nil {
+			options = append(options, WithComment(strings.TrimSpace(field.InlineComment.Message())))
+		}
+
+		if field.Optional {
+			options = append(options, WithIsOptional())
+		}
+
+		if field.Repeated {
+			options = append(options, WithIsRepeated())
+		}
+
+		return NewField(
+			field.Name,
+			field.Type,
+			options...,
+		), nil
+
+	case *proto.OneOfField:
+		if !isInsideOneOf {
+			return nil, fmt.Errorf("%w: %q (%T)", ErrOneOfFieldNotInsideOneOf, field.Name, field)
+		}
+
+		options := make([]FieldOption, 0)
+
+		for _, opt := range field.Options {
+			options = append(options, WithAttribute(opt.Name, opt.Constant.Source))
+		}
+
+		if field.InlineComment != nil {
+			options = append(options, WithComment(strings.TrimSpace(field.InlineComment.Message())))
+		}
+
+		return NewField(
+			field.Name,
+			field.Type,
+			options...,
+		), nil
+
+	case *proto.Oneof:
+		options := make([]FieldOption, 0)
+
+		options = append(
+			options,
+			WithIsOneOf(),
+		)
+
+		oneOfFields := make([]Field, len(field.Elements))
+
+		for index, oneOfField := range field.Elements {
+			oneOfFieldElement, err := p.protoToField(ctx, oneOfField, true)
+			if err != nil {
+				return nil, fmt.Errorf("%w: oneof %q field %T", ErrProcessField, field.Name, oneOfField)
+			}
+
+			oneOfFields[index] = oneOfFieldElement
+		}
+
+		options = append(options, WithChildren(oneOfFields))
+
+		return NewField(
+			field.Name,
+			"oneOf", // @todo!!!
+			options...,
+		), nil
+
+	default:
+		return nil, fmt.Errorf("%w: %#v", ErrUnknownProtobufField, field)
+	}
 }
 
 func (p *ParserImpl) processEnum(

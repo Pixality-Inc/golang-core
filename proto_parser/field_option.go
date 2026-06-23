@@ -2,9 +2,21 @@ package proto_parser
 
 type FieldOption = func(field *FieldImpl)
 
+func WithChildren(fields []Field) FieldOption {
+	return func(field *FieldImpl) {
+		field.children = fields
+	}
+}
+
 func WithAdditionalType(additionalType string) FieldOption {
 	return func(field *FieldImpl) {
 		field.additionalType = additionalType
+	}
+}
+
+func WithIsOneOf() FieldOption {
+	return func(field *FieldImpl) {
+		field.isOneOf = true
 	}
 }
 
