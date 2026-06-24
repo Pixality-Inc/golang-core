@@ -138,10 +138,21 @@ func (p *ParserImpl) processMessage(
 				return fmt.Errorf("%w: %s: %w", ErrProcessMessage, message.Name, err)
 			}
 
+		case *proto.Enum:
+			if err := p.processEnum(ctx, state, inputContext, append(path, message.Name), field); err != nil {
+				return fmt.Errorf("%w: %s: %w", ErrProcessEnum, message.Name, err)
+			}
+
+		case *proto.Comment:
+			// skip
+
+		case *proto.Option:
+			// skip
+
 		case *proto.Reserved:
 			// skip
 
-		case *proto.Comment:
+		case *proto.Extensions:
 			// skip
 
 		default:
@@ -252,15 +263,23 @@ func (p *ParserImpl) protoToField(
 			WithIsOneOf(),
 		)
 
-		oneOfFields := make([]Field, len(field.Elements))
+		oneOfFields := make([]Field, 0, len(field.Elements))
 
-		for index, oneOfField := range field.Elements {
+		for _, oneOfField := range field.Elements {
+			switch oneOfField.(type) {
+			case *proto.Comment:
+				continue
+
+			case *proto.Option:
+				continue
+			}
+
 			oneOfFieldElement, err := p.protoToField(ctx, oneOfField, true)
 			if err != nil {
 				return nil, fmt.Errorf("%w: oneof %q field %T", ErrProcessField, field.Name, oneOfField)
 			}
 
-			oneOfFields[index] = oneOfFieldElement
+			oneOfFields = append(oneOfFields, oneOfFieldElement)
 		}
 
 		options = append(options, WithChildren(oneOfFields))
@@ -288,6 +307,12 @@ func (p *ParserImpl) processEnum(
 	for _, elementField := range enum.Elements {
 		switch field := elementField.(type) {
 		case *proto.Comment:
+			// skip
+
+		case *proto.Option:
+			// skip
+
+		case *proto.Reserved:
 			// skip
 
 		case *proto.EnumField:

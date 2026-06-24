@@ -93,6 +93,51 @@ message Example {
 	reserved 6 to 10;
 }`
 
+var regressionSource = `syntax = "proto3";
+
+package regression;
+
+message Book {
+  option deprecated = true;
+
+  string id = 1;
+}
+
+enum BookVisibility {
+  option deprecated = true;
+  reserved 2;
+
+  BOOK_VISIBILITY_UNKNOWN = 0;
+  BOOK_VISIBILITY_PUBLIC = 1;
+}
+
+message Library {
+  enum ShelfState {
+    option deprecated = true;
+    reserved 2;
+
+    SHELF_STATE_UNKNOWN = 0;
+    SHELF_STATE_OPEN = 1;
+  }
+
+  oneof owner {
+    option deprecated = true;
+    // owner id
+    string user_id = 1;
+    string group_id = 2;
+  }
+}`
+
+var regressionExtensionsSource = `syntax = "proto2";
+
+package regression;
+
+message ExtensibleBook {
+  optional string legacy_id = 1;
+
+  extensions 100 to max;
+}`
+
 //nolint:maintidx
 func TestParser(t *testing.T) {
 	t.Parallel()
@@ -326,4 +371,87 @@ func TestParser(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParserIgnoresOptionsReservedExtensionsAndNestedEnums(t *testing.T) {
+	t.Parallel()
+
+	pathSeparator := "::"
+	parser := New(pathSeparator)
+
+	results, err := parser.Parse(t.Context(), []Input{
+		NewBytesInput(
+			"regression.proto",
+			[]byte(regressionSource),
+			"regression",
+		),
+		NewBytesInput(
+			"regression_extensions.proto",
+			[]byte(regressionExtensionsSource),
+			"regression",
+		),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, results.Models, 3)
+	require.Len(t, results.Enums, 2)
+
+	require.Contains(t, results.Models, "Book")
+	book := results.Models["Book"]
+	require.Equal(t, "Book", book.Name())
+	require.Empty(t, book.Path())
+
+	bookFields := book.Fields()
+	require.Len(t, bookFields, 1)
+	require.Equal(t, "id", bookFields[0].Name())
+	require.Equal(t, "string", bookFields[0].Type())
+
+	require.Contains(t, results.Enums, "BookVisibility")
+	visibility := results.Enums["BookVisibility"]
+	require.Equal(t, "BookVisibility", visibility.Name())
+	require.Empty(t, visibility.Path())
+
+	visibilityEntries := visibility.Entries()
+	require.Len(t, visibilityEntries, 2)
+	require.Equal(t, "BOOK_VISIBILITY_UNKNOWN", visibilityEntries[0].Name())
+	require.Equal(t, 0, visibilityEntries[0].Value())
+	require.Equal(t, "BOOK_VISIBILITY_PUBLIC", visibilityEntries[1].Name())
+	require.Equal(t, 1, visibilityEntries[1].Value())
+
+	require.Contains(t, results.Enums, "Library"+pathSeparator+"ShelfState")
+	shelfState := results.Enums["Library"+pathSeparator+"ShelfState"]
+	require.Equal(t, "ShelfState", shelfState.Name())
+	require.Equal(t, []string{"Library"}, shelfState.Path())
+
+	shelfStateEntries := shelfState.Entries()
+	require.Len(t, shelfStateEntries, 2)
+	require.Equal(t, "SHELF_STATE_UNKNOWN", shelfStateEntries[0].Name())
+	require.Equal(t, 0, shelfStateEntries[0].Value())
+	require.Equal(t, "SHELF_STATE_OPEN", shelfStateEntries[1].Name())
+	require.Equal(t, 1, shelfStateEntries[1].Value())
+
+	require.Contains(t, results.Models, "Library")
+	library := results.Models["Library"]
+	libraryFields := library.Fields()
+	require.Len(t, libraryFields, 1)
+
+	owner := libraryFields[0]
+	require.Equal(t, "owner", owner.Name())
+	require.Equal(t, "oneOf", owner.Type())
+	require.True(t, owner.IsOneOf())
+
+	ownerChildren := owner.Children()
+	require.Len(t, ownerChildren, 2)
+	require.Equal(t, "user_id", ownerChildren[0].Name())
+	require.Equal(t, "string", ownerChildren[0].Type())
+	require.Equal(t, "group_id", ownerChildren[1].Name())
+	require.Equal(t, "string", ownerChildren[1].Type())
+
+	require.Contains(t, results.Models, "ExtensibleBook")
+	extensibleBook := results.Models["ExtensibleBook"]
+	extensibleBookFields := extensibleBook.Fields()
+	require.Len(t, extensibleBookFields, 1)
+	require.Equal(t, "legacy_id", extensibleBookFields[0].Name())
+	require.Equal(t, "string", extensibleBookFields[0].Type())
+	require.True(t, extensibleBookFields[0].IsOptional())
 }
