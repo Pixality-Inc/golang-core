@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +29,11 @@ const DefaultUploadPartSize int64 = 64 * 1024 * 1024
 
 // DefaultUploadConcurrency is the default number of concurrent parts uploaded.
 const DefaultUploadConcurrency = 4
+
+// MaxSingleCopySize is the maximum object size for a single server-side PUT-copy (CopyObject). S3
+// caps the copy source at 5 GiB; larger sources must be copied with a server-side multipart copy
+// (ComposeObject -> UploadPartCopy).
+const MaxSingleCopySize int64 = 5 * 1024 * 1024 * 1024
 
 // ErrNoChunks is returned by CompleteMultipartUpload when the caller passes an empty chunks slice.
 var ErrNoChunks = errors.New("s3: complete multipart called with no chunks")
@@ -203,13 +209,19 @@ func (c *Impl) Copy(ctx context.Context, srcObjectName string, dstObjectName str
 		return err
 	}
 
-	src := minio.CopySrcOptions{Bucket: c.bucketName, Object: c.getObjectFullName(srcObjectName)}
-	dst := minio.CopyDestOptions{Bucket: c.bucketName, Object: c.getObjectFullName(dstObjectName)}
+	srcFullName := c.getObjectFullName(srcObjectName)
+	dstFullName := c.getObjectFullName(dstObjectName)
 
-	// minio CopyObject performs a server-side copy (single PUT-copy up to 5 GiB);
-	// larger objects would need ComposeObject, out of scope for current artifacts
-	if _, err := c.client.CopyObject(ctx, dst, src); err != nil {
-		return fmt.Errorf("s3: copy '%s' to '%s': %w", srcObjectName, dstObjectName, err)
+	src := minio.CopySrcOptions{Bucket: c.bucketName, Object: srcFullName}
+	dst := minio.CopyDestOptions{Bucket: c.bucketName, Object: dstFullName}
+
+	// CopyObject is a single server-side PUT-copy: it duplicates the object and all its metadata
+	// server-side, but S3 caps the copy source at MaxSingleCopySize (5 GiB). This is the hot path and
+	// stays free of any extra request for the common (<= 5 GiB) case.
+	if _, err := c.client.CopyObject(ctx, dst, src); err == nil {
+		return nil
+	} else if composeErr := c.copyLarge(ctx, srcFullName, dstFullName, err); composeErr != nil {
+		return composeErr
 	}
 
 	return nil
@@ -599,6 +611,65 @@ func newS3Transport() *http.Transport {
 		DisableCompression:    true,
 		ResponseHeaderTimeout: sourceResponseHeaderTimeout,
 	}
+}
+
+// copyLarge handles the fallback for an object that CopyObject could not copy in one PUT, which is
+// expected when the source is over the 5 GiB single-copy limit. It confirms the source really is over
+// the limit (otherwise the original copy error is surfaced unchanged) and then copies it with a
+// server-side multipart copy (ComposeObject -> UploadPartCopy by byte range, up to ~5 TiB). The
+// multipart path does not carry the source content metadata, so it is reproduced on the destination
+// explicitly.
+func (c *Impl) copyLarge(ctx context.Context, srcFullName, dstFullName string, copyErr error) error {
+	info, statErr := c.client.StatObject(ctx, c.bucketName, srcFullName, minio.StatObjectOptions{})
+	if statErr != nil || info.Size <= MaxSingleCopySize {
+		// not provably an over-the-limit source: surface the original copy error
+		return fmt.Errorf("s3: copy '%s' to '%s': %w", srcFullName, dstFullName, copyErr)
+	}
+
+	src := minio.CopySrcOptions{Bucket: c.bucketName, Object: srcFullName}
+	dst := minio.CopyDestOptions{
+		Bucket:          c.bucketName,
+		Object:          dstFullName,
+		ReplaceMetadata: true,
+		UserMetadata:    largeCopyMetadata(info),
+	}
+
+	if _, err := c.client.ComposeObject(ctx, dst, src); err != nil {
+		return fmt.Errorf("s3: multipart copy '%s' to '%s': %w", srcFullName, dstFullName, err)
+	}
+
+	return nil
+}
+
+// largeCopyMetadata reproduces the source object content metadata for a multipart copy. The
+// ComposeObject multipart path does not carry it over, so the source content-type, the other content
+// headers and the user metadata are passed explicitly on the destination. Keys that name a standard
+// HTTP header (content-type, cache-control, ...) are applied as-is by the SDK; the rest become
+// x-amz-meta-* entries. User tags are preserved by ComposeObject itself (ReplaceTags stays false).
+func largeCopyMetadata(info minio.ObjectInfo) map[string]string {
+	meta := make(map[string]string, len(info.UserMetadata)+6)
+
+	maps.Copy(meta, info.UserMetadata)
+
+	if info.ContentType != "" {
+		meta["Content-Type"] = info.ContentType
+	}
+
+	for _, h := range []string{"Content-Encoding", "Content-Disposition", "Content-Language", "Cache-Control"} {
+		if v := info.Metadata.Get(h); v != "" {
+			meta[h] = v
+		}
+	}
+
+	// Expires is a standard content header that the single-PUT CopyObject path preserves, but
+	// minio-go parses it into ObjectInfo.Expires (a time.Time) rather than leaving it in Metadata,
+	// so it has to be reproduced from that field. The SDK treats "Expires" as a standard header on
+	// write, and http.TimeFormat matches the encoding minio-go uses for it on PutObject.
+	if !info.Expires.IsZero() {
+		meta["Expires"] = info.Expires.UTC().Format(http.TimeFormat)
+	}
+
+	return meta
 }
 
 // init is intentionally context-agnostic — minio.New does not perform a
