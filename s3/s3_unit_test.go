@@ -437,3 +437,46 @@ func TestDirEntriesFromObjects_UnsortedWithinInput(t *testing.T) {
 	assert.Equal(t, "zdir", got[0].Name(), "input order preserved by helper")
 	assert.Equal(t, "afile.bin", got[1].Name())
 }
+
+// TestLargeCopyMetadata verifies the metadata reproduced for the multipart-copy (> 5 GiB) fallback:
+// the source content-type, the other content headers and the user metadata must be carried so a large
+// object does not silently lose its content-type, while unrelated response headers are left out.
+func TestLargeCopyMetadata(t *testing.T) {
+	t.Parallel()
+
+	info := minio.ObjectInfo{
+		ContentType:  "video/mp4",
+		UserMetadata: minio.StringMap{"original-name": "movie.mp4"},
+		Metadata: http.Header{
+			"Content-Encoding": []string{"gzip"},
+			"Cache-Control":    []string{"max-age=3600"},
+			"Content-Length":   []string{"9999999999"},
+			"Last-Modified":    []string{"Mon, 02 Jan 2006 15:04:05 GMT"},
+		},
+	}
+
+	meta := largeCopyMetadata(info)
+
+	assert.Equal(t, "video/mp4", meta["Content-Type"], "content-type must be preserved")
+	assert.Equal(t, "gzip", meta["Content-Encoding"])
+	assert.Equal(t, "max-age=3600", meta["Cache-Control"])
+	assert.Equal(t, "movie.mp4", meta["original-name"], "user metadata must be preserved")
+
+	_, hasLen := meta["Content-Length"]
+	assert.False(t, hasLen, "unrelated response headers must not be copied")
+
+	_, hasModified := meta["Last-Modified"]
+	assert.False(t, hasModified, "unrelated response headers must not be copied")
+}
+
+// TestLargeCopyMetadata_emptyContentType documents that an absent source content-type yields no
+// Content-Type key, so the SDK is left to apply its own default rather than an empty value.
+func TestLargeCopyMetadata_emptyContentType(t *testing.T) {
+	t.Parallel()
+
+	meta := largeCopyMetadata(minio.ObjectInfo{Metadata: http.Header{}})
+
+	_, has := meta["Content-Type"]
+	assert.False(t, has)
+	assert.Empty(t, meta)
+}
