@@ -647,7 +647,7 @@ func (c *Impl) copyLarge(ctx context.Context, srcFullName, dstFullName string, c
 // HTTP header (content-type, cache-control, ...) are applied as-is by the SDK; the rest become
 // x-amz-meta-* entries. User tags are preserved by ComposeObject itself (ReplaceTags stays false).
 func largeCopyMetadata(info minio.ObjectInfo) map[string]string {
-	meta := make(map[string]string, len(info.UserMetadata)+5)
+	meta := make(map[string]string, len(info.UserMetadata)+6)
 
 	maps.Copy(meta, info.UserMetadata)
 
@@ -659,6 +659,14 @@ func largeCopyMetadata(info minio.ObjectInfo) map[string]string {
 		if v := info.Metadata.Get(h); v != "" {
 			meta[h] = v
 		}
+	}
+
+	// Expires is a standard content header that the single-PUT CopyObject path preserves, but
+	// minio-go parses it into ObjectInfo.Expires (a time.Time) rather than leaving it in Metadata,
+	// so it has to be reproduced from that field. The SDK treats "Expires" as a standard header on
+	// write, and http.TimeFormat matches the encoding minio-go uses for it on PutObject.
+	if !info.Expires.IsZero() {
+		meta["Expires"] = info.Expires.UTC().Format(http.TimeFormat)
 	}
 
 	return meta

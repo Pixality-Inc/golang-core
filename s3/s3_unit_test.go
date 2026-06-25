@@ -447,6 +447,8 @@ func TestLargeCopyMetadata(t *testing.T) {
 	info := minio.ObjectInfo{
 		ContentType:  "video/mp4",
 		UserMetadata: minio.StringMap{"original-name": "movie.mp4"},
+		// minio-go parses the Expires HTTP header into this field, not into Metadata.
+		Expires: time.Date(2026, time.January, 2, 15, 4, 5, 0, time.UTC),
 		Metadata: http.Header{
 			"Content-Encoding": []string{"gzip"},
 			"Cache-Control":    []string{"max-age=3600"},
@@ -460,6 +462,7 @@ func TestLargeCopyMetadata(t *testing.T) {
 	assert.Equal(t, "video/mp4", meta["Content-Type"], "content-type must be preserved")
 	assert.Equal(t, "gzip", meta["Content-Encoding"])
 	assert.Equal(t, "max-age=3600", meta["Cache-Control"])
+	assert.Equal(t, "Fri, 02 Jan 2026 15:04:05 GMT", meta["Expires"], "expires must be preserved like the single-PUT copy path")
 	assert.Equal(t, "movie.mp4", meta["original-name"], "user metadata must be preserved")
 
 	_, hasLen := meta["Content-Length"]
