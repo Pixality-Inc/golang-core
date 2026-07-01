@@ -297,7 +297,7 @@ var jsonMarshaller = protojson.MarshalOptions{
 	UseProtoNames:   true,
 	Multiline:       false,
 	EmitUnpopulated: true,
-	UseEnumNumbers:  true,
+	UseEnumNumbers:  false,
 }
 
 var jsonUnmarshaller = protojson.UnmarshalOptions{
