@@ -1,9 +1,9 @@
 package pusher
 
 type RegisterTokenOptions struct {
-	language *string
-	locale   *string
-	timezone *string
+	Language *string
+	Locale   *string
+	Timezone *string
 }
 
 func NewRegisterTokenOptions() *RegisterTokenOptions {
@@ -14,18 +14,18 @@ type RegisterTokenOption func(options *RegisterTokenOptions)
 
 func WithLanguage(language *string) RegisterTokenOption {
 	return func(options *RegisterTokenOptions) {
-		options.language = language
+		options.Language = language
 	}
 }
 
 func WithLocale(locale *string) RegisterTokenOption {
 	return func(options *RegisterTokenOptions) {
-		options.locale = locale
+		options.Locale = locale
 	}
 }
 
 func WithTimezone(timezone *string) RegisterTokenOption {
 	return func(options *RegisterTokenOptions) {
-		options.timezone = timezone
+		options.Timezone = timezone
 	}
 }

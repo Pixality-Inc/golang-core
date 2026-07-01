@@ -7,6 +7,7 @@ import (
 
 	http "github.com/pixality-inc/golang-core/http_client"
 	"github.com/pixality-inc/golang-core/logger"
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -29,10 +30,11 @@ type Client interface {
 		deviceId string,
 	) error
 
-	Notify(
-		ctx context.Context,
-		options ...NotifyOption,
-	)
+	// @todo!!!
+	//	Notify(
+	//		ctx context.Context,
+	//		options ...NotifyOption,
+	//	)
 }
 
 type ClientImpl struct {
@@ -107,7 +109,7 @@ func (c *ClientImpl) RegisterDevice(
 		return errors.Join(ErrRegisterDevice, err)
 	}
 
-	if response.StatusCode != 200 {
+	if response.StatusCode != fasthttp.StatusOK {
 		return fmt.Errorf("%w: failed to register device: %s", ErrRegisterDevice, response.StatusMessage)
 	}
 
@@ -140,7 +142,7 @@ func (c *ClientImpl) UnregisterDevice(
 		return errors.Join(ErrUnregisterDevice, err)
 	}
 
-	if response.StatusCode != 200 {
+	if response.StatusCode != fasthttp.StatusOK {
 		return fmt.Errorf("%w: failed to unregister device: %s", ErrUnregisterDevice, response.StatusMessage)
 	}
 

@@ -11,14 +11,14 @@ func NewRegisterDeviceOptions() *RegisterDeviceOptions {
 	return &RegisterDeviceOptions{}
 }
 
-func WithLanguage(language *string) RegisterDeviceOption {
+func WithLanguage(language string) RegisterDeviceOption {
 	return func(options *RegisterDeviceOptions) {
-		options.language = language
+		options.language = &language
 	}
 }
 
-func WithTimezone(timezone *int) RegisterDeviceOption {
+func WithTimezone(timezone int) RegisterDeviceOption {
 	return func(options *RegisterDeviceOptions) {
-		options.timezone = timezone
+		options.timezone = &timezone
 	}
 }
