@@ -89,7 +89,7 @@ func (p *PusherProvider) SendMessageByUserId(
 	ctx context.Context,
 	userId pusher.UserId,
 	message pusher.Message,
-) error {
+) (pusher.SendMessageResult, error) {
 	return p.sendMessage(
 		ctx,
 		clock.GetClock(ctx).Now(),
@@ -102,7 +102,7 @@ func (p *PusherProvider) SendMessageByDeviceId(
 	ctx context.Context,
 	deviceId pusher.DeviceId,
 	message pusher.Message,
-) error {
+) (pusher.SendMessageResult, error) {
 	return p.sendMessage(
 		ctx,
 		clock.GetClock(ctx).Now(),
@@ -116,21 +116,26 @@ func (p *PusherProvider) sendMessage(
 	now time.Time,
 	message pusher.Message,
 	options ...NotifyOption,
-) error {
+) (pusher.SendMessageResult, error) {
 	payload, err := messageToPayload(message)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	options = append(options, WithSendAt(now))
 
-	return p.pushwooshClient.Notify(
+	notifyResult, err := p.pushwooshClient.Notify(
 		ctx,
 		AllPlatformTypes,
 		MessageTypeTransactional,
 		*payload,
 		options...,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return pusher.NewSendMessageResult(pusher.MessageId(notifyResult.MessageId)), nil
 }
 
 func messageToPayload(message pusher.Message) (*MessagePayload, error) {

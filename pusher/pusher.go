@@ -10,8 +10,8 @@ import (
 type Pusher interface {
 	RegisterToken(ctx context.Context, userId UserId, deviceId DeviceId, tokenType TokenType, token Token, options ...RegisterTokenOption) error
 	UnregisterToken(ctx context.Context, userId UserId, deviceId DeviceId, token Token) error
-	SendMessageByUserId(ctx context.Context, userId UserId, message Message) error
-	SendMessageByDeviceId(ctx context.Context, deviceId DeviceId, message Message) error
+	SendMessageByUserId(ctx context.Context, userId UserId, message Message) (SendMessageResult, error)
+	SendMessageByDeviceId(ctx context.Context, deviceId DeviceId, message Message) (SendMessageResult, error)
 }
 
 type Impl struct {
@@ -34,10 +34,10 @@ func (p *Impl) UnregisterToken(ctx context.Context, userId UserId, deviceId Devi
 	return p.provider.UnregisterToken(ctx, userId, deviceId, token)
 }
 
-func (p *Impl) SendMessageByUserId(ctx context.Context, userId UserId, message Message) error {
+func (p *Impl) SendMessageByUserId(ctx context.Context, userId UserId, message Message) (SendMessageResult, error) {
 	return p.provider.SendMessageByUserId(ctx, userId, message)
 }
 
-func (p *Impl) SendMessageByDeviceId(ctx context.Context, deviceId DeviceId, message Message) error {
+func (p *Impl) SendMessageByDeviceId(ctx context.Context, deviceId DeviceId, message Message) (SendMessageResult, error) {
 	return p.provider.SendMessageByDeviceId(ctx, deviceId, message)
 }

@@ -14,3 +14,23 @@ const (
 type UserId string
 
 type DeviceId string
+
+type MessageId string
+
+type SendMessageResult interface {
+	MessageId() MessageId
+}
+
+type SendMessageResultImpl struct {
+	messageId MessageId
+}
+
+func NewSendMessageResult(messageId MessageId) *SendMessageResultImpl {
+	return &SendMessageResultImpl{
+		messageId: messageId,
+	}
+}
+
+func (r *SendMessageResultImpl) MessageId() MessageId {
+	return r.messageId
+}

@@ -40,7 +40,7 @@ type Client interface {
 		messageType MessageType,
 		payload MessagePayload,
 		options ...NotifyOption,
-	) error
+	) (*NotifyResult, error)
 }
 
 type ClientImpl struct {
@@ -161,7 +161,7 @@ func (c *ClientImpl) Notify(
 	messageType MessageType,
 	payload MessagePayload,
 	options ...NotifyOption,
-) error {
+) (*NotifyResult, error) {
 	requestOptions := NewNotifyOptions()
 
 	for _, option := range options {
@@ -199,7 +199,7 @@ func (c *ClientImpl) Notify(
 			schedule.At = new(fmt.Sprintf("%fs", requestOptions.SendAfter.Seconds()))
 		}
 	} else {
-		return ErrScheduleRequired
+		return nil, ErrScheduleRequired
 	}
 
 	notify := Notify{
@@ -213,18 +213,22 @@ func (c *ClientImpl) Notify(
 		Schedule:    schedule,
 	}
 
-	checkResponse := func(httpResponse http.Response, err error) error {
+	checkResponse := func(httpResponse http.Response, err error) (*NotifyResult, error) {
 		if err != nil {
-			return errors.Join(ErrNotify, err)
+			return nil, errors.Join(ErrNotify, err)
 		}
 
 		var response *ApiResult[NotifyResponse]
 
 		if err = httpResponse.DecodeJSON(&response); err != nil {
-			return errors.Join(ErrNotify, err)
+			return nil, errors.Join(ErrNotify, err)
 		}
 
-		return nil
+		notifyResult := &NotifyResult{
+			MessageId: response.Result.MessageCode,
+		}
+
+		return notifyResult, nil
 	}
 
 	switch messageType {
@@ -251,6 +255,6 @@ func (c *ClientImpl) Notify(
 		return checkResponse(httpResponse, err)
 
 	default:
-		return fmt.Errorf("%w: %s", ErrUnknownMessageType, messageType)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownMessageType, messageType)
 	}
 }
