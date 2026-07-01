@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/pixality-inc/golang-core/clock"
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/pusher"
-	"github.com/pixality-inc/golang-core/util"
 )
 
 var (
@@ -89,8 +90,12 @@ func (p *PusherProvider) SendMessageByUserId(
 	userId pusher.UserId,
 	message pusher.Message,
 ) error {
-	// @todo!!!
-	return util.ErrNotImplemented
+	return p.sendMessage(
+		ctx,
+		clock.GetClock(ctx).Now(),
+		message,
+		WithUsersId(string(userId)),
+	)
 }
 
 func (p *PusherProvider) SendMessageByDeviceId(
@@ -98,8 +103,79 @@ func (p *PusherProvider) SendMessageByDeviceId(
 	deviceId pusher.DeviceId,
 	message pusher.Message,
 ) error {
-	// @todo!!!
-	return util.ErrNotImplemented
+	return p.sendMessage(
+		ctx,
+		clock.GetClock(ctx).Now(),
+		message,
+		WithDeviceId(string(deviceId)),
+	)
+}
+
+func (p *PusherProvider) sendMessage(
+	ctx context.Context,
+	now time.Time,
+	message pusher.Message,
+	options ...NotifyOption,
+) error {
+	payload, err := messageToPayload(message)
+	if err != nil {
+		return err
+	}
+
+	options = append(options, WithSendAt(now))
+
+	return p.pushwooshClient.Notify(
+		ctx,
+		AllPlatformTypes,
+		MessageTypeTransactional,
+		*payload,
+		options...,
+	)
+}
+
+func messageToPayload(message pusher.Message) (*MessagePayload, error) {
+	nilIfEmpty := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+
+		return &s
+	}
+
+	var badges *string
+
+	badgesCount := message.Badges()
+
+	if badgesCount > 0 {
+		badges = new(strconv.Itoa(badgesCount))
+	}
+
+	localizedContent := LocalizedContent{
+		Title:    nilIfEmpty(message.Title()),
+		Subtitle: nilIfEmpty(message.Subtitle()),
+		Body:     nilIfEmpty(message.Body()),
+		Badges:   badges,
+	}
+
+	payload := MessagePayload{
+		Content: MessagePayloadContent{
+			LocalizedContent: map[string]map[ContentPlatformType]LocalizedContent{
+				"default": {
+					ContentPlatformTypeIOS:     localizedContent,
+					ContentPlatformTypeAndroid: localizedContent,
+					ContentPlatformTypeHuawei:  localizedContent,
+					ContentPlatformTypeChrome:  localizedContent,
+					ContentPlatformTypeSafari:  localizedContent,
+					ContentPlatformTypeFirefox: localizedContent,
+					ContentPlatformTypeIE:      localizedContent,
+				},
+			},
+		},
+		Silent:     message.Silent(),
+		CustomData: message.CustomData(),
+	}
+
+	return &payload, nil
 }
 
 func convertTokenType(tokenType pusher.TokenType) (DeviceType, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	http "github.com/pixality-inc/golang-core/http_client"
 	"github.com/pixality-inc/golang-core/logger"
@@ -11,8 +12,11 @@ import (
 )
 
 var (
-	ErrRegisterDevice   = errors.New("register device")
-	ErrUnregisterDevice = errors.New("unregister device")
+	ErrRegisterDevice     = errors.New("register device")
+	ErrUnregisterDevice   = errors.New("unregister device")
+	ErrNotify             = errors.New("notify")
+	ErrUnknownMessageType = errors.New("unknown message type")
+	ErrScheduleRequired   = errors.New("schedule required")
 )
 
 type Client interface {
@@ -30,11 +34,13 @@ type Client interface {
 		deviceId string,
 	) error
 
-	// @todo!!!
-	//	Notify(
-	//		ctx context.Context,
-	//		options ...NotifyOption,
-	//	)
+	Notify(
+		ctx context.Context,
+		platforms []PlatformType,
+		messageType MessageType,
+		payload MessagePayload,
+		options ...NotifyOption,
+	) error
 }
 
 type ClientImpl struct {
@@ -147,4 +153,104 @@ func (c *ClientImpl) UnregisterDevice(
 	}
 
 	return nil
+}
+
+func (c *ClientImpl) Notify(
+	ctx context.Context,
+	platforms []PlatformType,
+	messageType MessageType,
+	payload MessagePayload,
+	options ...NotifyOption,
+) error {
+	requestOptions := NewNotifyOptions()
+
+	for _, option := range options {
+		option(requestOptions)
+	}
+
+	var (
+		usersList      *List
+		hwIdsList      *List
+		pushTokensList *List
+	)
+
+	if requestOptions.UsersIds != nil {
+		usersList = NewList(requestOptions.UsersIds...)
+	}
+
+	if requestOptions.DevicesIds != nil {
+		hwIdsList = NewList(requestOptions.DevicesIds...)
+	}
+
+	if requestOptions.PushTokens != nil {
+		pushTokensList = NewList(requestOptions.PushTokens...)
+	}
+
+	var schedule *Schedule
+
+	if requestOptions.SendAt != nil || requestOptions.SendAfter != nil {
+		schedule = &Schedule{}
+
+		if requestOptions.SendAt != nil {
+			schedule.At = new(requestOptions.SendAt.In(time.UTC).Format(time.RFC3339))
+		}
+
+		if requestOptions.SendAfter != nil {
+			schedule.At = new(fmt.Sprintf("%fs", requestOptions.SendAfter.Seconds()))
+		}
+	} else {
+		return ErrScheduleRequired
+	}
+
+	notify := Notify{
+		Application: c.config.ApplicationId(),
+		Platforms:   platforms,
+		Users:       usersList,
+		HwIds:       hwIdsList,
+		PushTokens:  pushTokensList,
+		Payload:     payload,
+		MessageType: messageType,
+		Schedule:    schedule,
+	}
+
+	checkResponse := func(httpResponse http.Response, err error) error {
+		if err != nil {
+			return errors.Join(ErrNotify, err)
+		}
+
+		var response *ApiResult[NotifyResponse]
+
+		if err = httpResponse.DecodeJSON(&response); err != nil {
+			return errors.Join(ErrNotify, err)
+		}
+
+		return nil
+	}
+
+	switch messageType {
+	case MessageTypeTransactional:
+		httpResponse, err := c.httpClient.Post(
+			ctx,
+			"/messaging/v2/notify",
+			http.WithJsonBody(NotifyTransactionalRequest{
+				Transactional: notify,
+			}),
+		)
+
+		return checkResponse(httpResponse, err)
+
+	case MessageTypeMarketing:
+		httpResponse, err := c.httpClient.Post(
+			ctx,
+			"/messaging/v2/notify",
+			http.WithJsonBody(NotifySegmentRequest{
+				Segment: notify,
+			}),
+		)
+
+		return checkResponse(httpResponse, err)
+
+	default:
+		return fmt.Errorf("%w: %s", ErrUnknownMessageType, messageType)
+	}
 }

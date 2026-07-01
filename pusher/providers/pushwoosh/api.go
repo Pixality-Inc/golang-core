@@ -10,6 +10,10 @@ type ApiResponse[T any] struct {
 	Response      T      `json:"response"`
 }
 
+type ApiResult[T any] struct {
+	Result T `json:"result"`
+}
+
 type RegisterDeviceRequest struct {
 	Application string         `json:"application"`
 	Email       *string        `json:"email,omitempty"`
@@ -30,9 +34,7 @@ type RegisterDeviceRequest struct {
 	Tags        map[string]any `json:"tags,omitempty"`
 }
 
-type RegisterDeviceResponse struct {
-	IosCategories []any `json:"ios_categories,omitempty"`
-}
+type RegisterDeviceResponse struct{}
 
 type UnregisterDeviceRequest struct {
 	Application string `json:"application"`
@@ -40,3 +42,44 @@ type UnregisterDeviceRequest struct {
 }
 
 type UnregisterDeviceResponse struct{}
+
+type List struct {
+	List []string `json:"list"`
+}
+
+func NewList(items ...string) *List {
+	return &List{
+		List: items,
+	}
+}
+
+type Schedule struct {
+	At    *string `json:"at,omitempty"`
+	After *string `json:"after,omitempty"`
+}
+
+type Notify struct {
+	Application              string         `json:"application"`
+	Platforms                []PlatformType `json:"platforms,omitempty"`
+	Users                    *List          `json:"users,omitempty"`
+	HwIds                    *List          `json:"hwids,omitempty"`
+	PushTokens               *List          `json:"push_tokens,omitempty"`
+	Payload                  MessagePayload `json:"payload"`
+	MessageType              MessageType    `json:"message_type"`
+	ReturnUnknownIdentifiers bool           `json:"return_unknown_identifiers,omitempty"`
+	UseLatestUserDevice      bool           `json:"use_latest_user_device,omitempty"`
+	Schedule                 *Schedule      `json:"schedule,omitempty"`
+}
+
+type NotifyTransactionalRequest struct {
+	Transactional Notify `json:"transactional"`
+}
+
+type NotifySegmentRequest struct {
+	Segment Notify `json:"segment"`
+}
+
+type NotifyResponse struct {
+	MessageCode        string   `json:"messageCode"`
+	UnknownIdentifiers []string `json:"unknownIdentifiers"`
+}
