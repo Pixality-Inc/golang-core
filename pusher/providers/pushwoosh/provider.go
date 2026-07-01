@@ -135,7 +135,9 @@ func (p *PusherProvider) sendMessage(
 		return nil, err
 	}
 
-	return pusher.NewSendMessageResult(pusher.MessageId(notifyResult.MessageId)), nil
+	return pusher.NewSendMessageResult(
+		pusher.MessageId(notifyResult.MessageId),
+	), nil
 }
 
 func messageToPayload(message pusher.Message) (*MessagePayload, error) {
