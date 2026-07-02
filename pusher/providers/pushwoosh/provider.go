@@ -164,21 +164,29 @@ func messageToPayload(message pusher.Message) (*MessagePayload, error) {
 		Badges:   badges,
 	}
 
+	isSilent := message.Silent()
+
+	var localizedContentMap map[string]map[ContentPlatformType]LocalizedContent
+
+	if !isSilent {
+		localizedContentMap = map[string]map[ContentPlatformType]LocalizedContent{
+			"default": {
+				ContentPlatformTypeIOS:     localizedContent,
+				ContentPlatformTypeAndroid: localizedContent,
+				ContentPlatformTypeHuawei:  localizedContent,
+				ContentPlatformTypeChrome:  localizedContent,
+				ContentPlatformTypeSafari:  localizedContent,
+				ContentPlatformTypeFirefox: localizedContent,
+				ContentPlatformTypeIE:      localizedContent,
+			},
+		}
+	}
+
 	payload := MessagePayload{
 		Content: MessagePayloadContent{
-			LocalizedContent: map[string]map[ContentPlatformType]LocalizedContent{
-				"default": {
-					ContentPlatformTypeIOS:     localizedContent,
-					ContentPlatformTypeAndroid: localizedContent,
-					ContentPlatformTypeHuawei:  localizedContent,
-					ContentPlatformTypeChrome:  localizedContent,
-					ContentPlatformTypeSafari:  localizedContent,
-					ContentPlatformTypeFirefox: localizedContent,
-					ContentPlatformTypeIE:      localizedContent,
-				},
-			},
+			LocalizedContent: localizedContentMap,
 		},
-		Silent:     message.Silent(),
+		Silent:     isSilent,
 		CustomData: message.CustomData(),
 	}
 

@@ -80,6 +80,6 @@ type NotifySegmentRequest struct {
 }
 
 type NotifyResponse struct {
-	MessageCode        string   `json:"messageCode"`
-	UnknownIdentifiers []string `json:"unknownIdentifiers"`
+	MessageCode        string   `json:"message_code"`
+	UnknownIdentifiers []string `json:"unknown_identifiers"`
 }
