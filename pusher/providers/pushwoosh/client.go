@@ -196,7 +196,7 @@ func (c *ClientImpl) Notify(
 		}
 
 		if requestOptions.SendAfter != nil {
-			schedule.At = new(fmt.Sprintf("%fs", requestOptions.SendAfter.Seconds()))
+			schedule.After = new(fmt.Sprintf("%fs", requestOptions.SendAfter.Seconds()))
 		}
 	} else {
 		return nil, ErrScheduleRequired
