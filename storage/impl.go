@@ -7,24 +7,44 @@ import (
 	"os"
 
 	"github.com/pixality-inc/golang-core/logger"
+	"github.com/pixality-inc/golang-core/retry"
 )
 
 type Impl struct {
 	log         logger.Loggable
 	provider    Provider
 	urlProvider UrlProvider
+	retryPolicy retry.Policy // nil => no retry (default)
+	retryable   Retryable    // nil => defaultRetryable
 }
 
-func NewStorage(provider Provider, urlProvider UrlProvider) Storage {
-	return &Impl{
+func NewStorage(provider Provider, urlProvider UrlProvider, opts ...Option) Storage {
+	impl := &Impl{
 		log:         logger.NewLoggableImplWithService("storage"),
 		provider:    provider,
 		urlProvider: urlProvider,
 	}
+
+	for _, opt := range opts {
+		opt(impl)
+	}
+
+	return impl
 }
 
 func (s *Impl) FileExists(ctx context.Context, path string) (bool, error) {
-	result, err := s.provider.FileExists(ctx, path)
+	var result bool
+
+	err := s.withRetry(ctx, func() error {
+		r, err := s.provider.FileExists(ctx, path)
+		if err != nil {
+			return err
+		}
+
+		result = r
+
+		return nil
+	})
 	if err != nil {
 		return false, fmt.Errorf("storage.FileExists(%s): %w", path, err)
 	}
@@ -33,7 +53,7 @@ func (s *Impl) FileExists(ctx context.Context, path string) (bool, error) {
 }
 
 func (s *Impl) DeleteFile(ctx context.Context, path string) error {
-	if err := s.provider.DeleteFile(ctx, path); err != nil {
+	if err := s.withRetry(ctx, func() error { return s.provider.DeleteFile(ctx, path) }); err != nil {
 		return fmt.Errorf("storage.DeleteFile(%s): %w", path, err)
 	}
 
@@ -41,13 +61,17 @@ func (s *Impl) DeleteFile(ctx context.Context, path string) error {
 }
 
 func (s *Impl) DeleteDir(ctx context.Context, path string) error {
-	if err := s.provider.DeleteDir(ctx, path); err != nil {
+	if err := s.withRetry(ctx, func() error { return s.provider.DeleteDir(ctx, path) }); err != nil {
 		return fmt.Errorf("storage.DeleteDir(%s): %w", path, err)
 	}
 
 	return nil
 }
 
+// Write is intentionally NOT retried at this layer: file is a single-use
+// io.Reader, so re-invoking after a partial read would corrupt the object.
+// Streaming-upload retry belongs in the provider (byte-offset resume), e.g.
+// gcs.WithUploadRetry.
 func (s *Impl) Write(ctx context.Context, path string, file io.Reader) error {
 	if err := s.provider.Write(ctx, path, file); err != nil {
 		return fmt.Errorf("storage.Write(%s): %w", path, err)
@@ -56,27 +80,51 @@ func (s *Impl) Write(ctx context.Context, path string, file io.Reader) error {
 	return nil
 }
 
+// WriteFile re-opens filename on every attempt, so unlike the streaming Write it
+// is safe to retry: each attempt gets a fresh reader positioned at the start.
 func (s *Impl) WriteFile(ctx context.Context, path string, filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("could not open file '%s': %w", filename, err)
-	}
-
-	defer func() {
-		if fErr := file.Close(); fErr != nil {
-			s.log.GetLogger(ctx).WithError(err).Errorf("failed to close file '%s'", filename)
+	err := s.withRetry(ctx, func() error {
+		file, err := os.Open(filename)
+		if err != nil {
+			return fmt.Errorf("could not open file '%s': %w", filename, err)
 		}
-	}()
 
-	if err = s.provider.Write(ctx, path, file); err != nil {
+		defer func() {
+			if fErr := file.Close(); fErr != nil {
+				s.log.GetLogger(ctx).WithError(fErr).Errorf("failed to close file '%s'", filename)
+			}
+		}()
+
+		return s.provider.Write(ctx, path, file)
+	})
+	if err != nil {
 		return fmt.Errorf("storage.WriteFile(%s, %s): %w", path, filename, err)
 	}
 
 	return nil
 }
 
+// ReadFile retries only the stream open; reads from the returned stream are the
+// caller's and cannot be retried here.
 func (s *Impl) ReadFile(ctx context.Context, path string) (io.ReadCloser, error) {
-	file, err := s.provider.ReadFile(ctx, path)
+	var file io.ReadCloser
+
+	err := s.withRetry(ctx, func() error {
+		reader, err := s.provider.ReadFile(ctx, path)
+		if err != nil {
+			// guard the (rc != nil, err != nil) contract violation: without this a
+			// retried open would leak a reader per attempt.
+			if reader != nil {
+				_ = reader.Close()
+			}
+
+			return err
+		}
+
+		file = reader
+
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("storage.ReadFile(%s): %w", path, err)
 	}
@@ -84,38 +132,61 @@ func (s *Impl) ReadFile(ctx context.Context, path string) (io.ReadCloser, error)
 	return file, nil
 }
 
+// DownloadFile re-creates (truncates) the destination on every attempt, so a
+// retried download restarts cleanly rather than appending to a partial file.
 func (s *Impl) DownloadFile(ctx context.Context, path string, filename string) error {
-	file, err := s.provider.ReadFile(ctx, path)
+	err := s.withRetry(ctx, func() error {
+		file, err := s.provider.ReadFile(ctx, path)
+		if err != nil {
+			return err
+		}
+
+		defer func() {
+			if fErr := file.Close(); fErr != nil {
+				s.log.GetLogger(ctx).WithError(fErr).Errorf("failed to close file '%s'", path)
+			}
+		}()
+
+		destFile, err := os.Create(filename)
+		if err != nil {
+			return fmt.Errorf("failed to open file %s: %w", filename, err)
+		}
+
+		if _, err := io.Copy(destFile, file); err != nil {
+			_ = destFile.Close()
+
+			return fmt.Errorf("failed to copy file %s to %s: %w", path, filename, err)
+		}
+
+		// return the destination close error rather than only logging it: a failed
+		// flush (e.g. ENOSPC) leaves a truncated file, and surfacing it lets the
+		// retry re-create and re-download instead of reporting a false success.
+		if err := destFile.Close(); err != nil {
+			return fmt.Errorf("failed to close file %s: %w", filename, err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("storage.DownloadFile(%s): %w", path, err)
-	}
-
-	defer func() {
-		if fErr := file.Close(); fErr != nil {
-			s.log.GetLogger(ctx).WithError(err).Errorf("failed to close file '%s'", path)
-		}
-	}()
-
-	destFile, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("storage.DownloadFile(%s): failed to open file %s: %w", path, filename, err)
-	}
-
-	defer func() {
-		if fErr := destFile.Close(); fErr != nil {
-			s.log.GetLogger(ctx).WithError(err).Errorf("failed to close file '%s'", filename)
-		}
-	}()
-
-	if _, err = io.Copy(destFile, file); err != nil {
-		return fmt.Errorf("storage.DownloadFile(%s): failed to copy file %s to %s: %w", path, path, filename, err)
 	}
 
 	return nil
 }
 
 func (s *Impl) ReadDir(ctx context.Context, path string) ([]DirEntry, error) {
-	dirEntries, err := s.provider.ReadDir(ctx, path)
+	var dirEntries []DirEntry
+
+	err := s.withRetry(ctx, func() error {
+		entries, err := s.provider.ReadDir(ctx, path)
+		if err != nil {
+			return err
+		}
+
+		dirEntries = entries
+
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("storage.ReadDir(%s): %w", path, err)
 	}
@@ -124,7 +195,7 @@ func (s *Impl) ReadDir(ctx context.Context, path string) ([]DirEntry, error) {
 }
 
 func (s *Impl) MkDir(ctx context.Context, path string) error {
-	if err := s.provider.MkDir(ctx, path); err != nil {
+	if err := s.withRetry(ctx, func() error { return s.provider.MkDir(ctx, path) }); err != nil {
 		return fmt.Errorf("storage.MkDir(%s): %w", path, err)
 	}
 
@@ -132,7 +203,7 @@ func (s *Impl) MkDir(ctx context.Context, path string) error {
 }
 
 func (s *Impl) Copy(ctx context.Context, srcPath string, dstPath string) error {
-	if err := s.provider.Copy(ctx, srcPath, dstPath); err != nil {
+	if err := s.withRetry(ctx, func() error { return s.provider.Copy(ctx, srcPath, dstPath) }); err != nil {
 		return fmt.Errorf("storage.Copy(%s -> %s): %w", srcPath, dstPath, err)
 	}
 
@@ -140,7 +211,7 @@ func (s *Impl) Copy(ctx context.Context, srcPath string, dstPath string) error {
 }
 
 func (s *Impl) Move(ctx context.Context, srcPath string, dstPath string) error {
-	if err := s.provider.Move(ctx, srcPath, dstPath); err != nil {
+	if err := s.withRetry(ctx, func() error { return s.provider.Move(ctx, srcPath, dstPath) }); err != nil {
 		return fmt.Errorf("storage.Move(%s -> %s): %w", srcPath, dstPath, err)
 	}
 
@@ -190,7 +261,18 @@ func (s *Impl) Close() error {
 }
 
 func (s *Impl) GetPublicUrl(ctx context.Context, path string) (string, error) {
-	url, err := s.urlProvider.GetPublicUrl(ctx, path)
+	var url string
+
+	err := s.withRetry(ctx, func() error {
+		u, err := s.urlProvider.GetPublicUrl(ctx, path)
+		if err != nil {
+			return err
+		}
+
+		url = u
+
+		return nil
+	})
 	if err != nil {
 		return "", fmt.Errorf("storage.GetPublicUrl(%s): %w", path, err)
 	}

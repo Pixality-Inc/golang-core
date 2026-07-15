@@ -13,6 +13,7 @@ import (
 	storage "github.com/pixality-inc/golang-core/storage"
 
 	gcs "cloud.google.com/go/storage"
+	"golang.org/x/net/http2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -68,6 +69,20 @@ type Impl struct {
 	basePublicUrl       string
 	client              *gcs.Client
 	mutex               sync.Mutex
+	uploadRetry         bool
+}
+
+// Option configures a Client at construction time.
+type Option func(*Impl)
+
+// WithUploadRetry enables bounded per-chunk retry of resumable uploads on
+// transient stream/network/5xx failures (see isRetryableGcsErr). It is off by
+// default so existing callers keep the SDK's default upload behavior; only
+// callers that opt in change how their uploads retry.
+func WithUploadRetry() Option {
+	return func(c *Impl) {
+		c.uploadRetry = true
+	}
 }
 
 func NewClient(
@@ -76,8 +91,9 @@ func NewClient(
 	bucketName string,
 	baseDir string,
 	basePublicUrl string,
+	opts ...Option,
 ) Client {
-	return &Impl{
+	client := &Impl{
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"gcs",
 			logger.Fields{
@@ -93,6 +109,12 @@ func NewClient(
 		client:              nil,
 		mutex:               sync.Mutex{},
 	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
 }
 
 func (c *Impl) Close() {
@@ -106,6 +128,37 @@ func (c *Impl) Close() {
 	if err := c.client.Close(); err != nil {
 		c.log.GetLoggerWithoutContext().WithError(err).Error("close failed")
 	}
+}
+
+// uploadMaxRetryAttempts bounds the per-chunk retry of a resumable upload so a
+// transient failure is retried a few times rather than failing the whole upload.
+const uploadMaxRetryAttempts = 4
+
+// isRetryableGcsErr augments, rather than replaces, the SDK default retry
+// classifier (as gcs.ShouldRetry docs recommend). WithErrorFunc overrides the SDK
+// classifier entirely, so to keep the classes it already retries (net errors, 5xx,
+// 429, 408, io.ErrUnexpectedEOF) we delegate to gcs.ShouldRetry and only add the
+// HTTP/2 stream reset (RST_STREAM INTERNAL_ERROR) it misses: http2.StreamError has
+// neither Temporary() nor Unwrap(), so it matches none of the SDK rules.
+func isRetryableGcsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// context guard first. order matters: gcs.ShouldRetry maps
+	// context.DeadlineExceeded to a retryable gRPC status, so caller-driven
+	// cancellation/deadline must be caught here before delegating.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	if gcs.ShouldRetry(err) {
+		return true
+	}
+
+	var streamErr http2.StreamError
+
+	return errors.As(err, &streamErr)
 }
 
 func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) error {
@@ -122,7 +175,19 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	writer := c.client.Bucket(c.bucketName).Object(objectFullName).NewWriter(ctx)
+	object := c.client.Bucket(c.bucketName).Object(objectFullName)
+
+	// Opt-in only: without WithUploadRetry the object keeps the SDK's default
+	// retry behavior, so callers that did not ask for it are unaffected.
+	if c.uploadRetry {
+		object = object.Retryer(
+			gcs.WithPolicy(gcs.RetryAlways),
+			gcs.WithErrorFunc(isRetryableGcsErr),
+			gcs.WithMaxAttempts(uploadMaxRetryAttempts),
+		)
+	}
+
+	writer := object.NewWriter(ctx)
 
 	metadata, err := storage.GetFileMetadataByName(objectFullName)
 	if err != nil {
