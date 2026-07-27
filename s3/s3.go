@@ -95,8 +95,28 @@ type Impl struct {
 	secretKey    string
 	usePathStyle bool
 
+	// responseHeaderTimeout is the transport ResponseHeaderTimeout. NewClient
+	// seeds it with sourceResponseHeaderTimeout and WithResponseHeaderTimeout
+	// overrides it.
+	responseHeaderTimeout time.Duration
+
 	client *minio.Client
 	mutex  sync.Mutex
+}
+
+// Option configures a Client at construction time.
+type Option func(*Impl)
+
+// WithResponseHeaderTimeout overrides how long a request waits for the backend
+// to start sending its response headers (http.Transport.ResponseHeaderTimeout).
+// default is sourceResponseHeaderTimeout. it is worth raising for backends that
+// are legitimately slow to first byte, e.g. seaweedfs locating a cold object.
+// honored on http/1 only, net/http ignores it on http/2 same as minio-go's own
+// default transport.
+func WithResponseHeaderTimeout(timeout time.Duration) Option {
+	return func(c *Impl) {
+		c.responseHeaderTimeout = timeout
+	}
 }
 
 func NewClient(
@@ -109,8 +129,9 @@ func NewClient(
 	baseDir string,
 	basePublicUrl string,
 	usePathStyle bool,
+	opts ...Option,
 ) Client {
-	return &Impl{
+	client := &Impl{
 		log: logger.NewLoggableImplWithServiceAndFields(
 			"s3",
 			logger.Fields{
@@ -118,16 +139,23 @@ func NewClient(
 				"bucket": bucketName,
 			},
 		),
-		name:          name,
-		bucketName:    bucketName,
-		baseDir:       baseDir,
-		basePublicUrl: basePublicUrl,
-		endpoint:      endpoint,
-		region:        region,
-		accessKey:     accessKey,
-		secretKey:     secretKey,
-		usePathStyle:  usePathStyle,
+		name:                  name,
+		bucketName:            bucketName,
+		baseDir:               baseDir,
+		basePublicUrl:         basePublicUrl,
+		endpoint:              endpoint,
+		region:                region,
+		accessKey:             accessKey,
+		secretKey:             secretKey,
+		usePathStyle:          usePathStyle,
+		responseHeaderTimeout: sourceResponseHeaderTimeout,
 	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
 }
 
 func (c *Impl) Close() {
@@ -554,12 +582,28 @@ const (
 // stays a loud error instead of being masked by the placeholder.
 type lastModifiedFallbackTransport struct {
 	base http.RoundTripper
+	log  logger.Loggable
 }
 
 func (t lastModifiedFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		return resp, err
+	}
+
+	// seaweedfs answers 503 + Retry-After while it warms a cold object from
+	// origin. log the response headers so the Retry-After it actually sends is
+	// observable, its value is not seconds and can be minutes
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		t.log.GetLoggerWithoutContext().
+			WithFields(logger.Fields{
+				"method":      req.Method,
+				"url":         req.URL.String(),
+				"status":      resp.StatusCode,
+				"retry_after": resp.Header.Get("Retry-After"),
+				"headers":     resp.Header,
+			}).
+			Warn("s3 backend returned 503")
 	}
 
 	if req.Method == http.MethodGet && resp.Header.Get(lastModifiedHeader) == "" {
@@ -599,7 +643,7 @@ const sourceResponseHeaderTimeout = time.Minute
 // affected backend (SeaweedFS) uses; net/http ignores it on HTTP/2, exactly as
 // minio-go's own DefaultTransport does. Healthy backends that negotiate HTTP/2
 // (e.g. Hetzner) were never the stalling backend, so this is not a regression.
-func newS3Transport() *http.Transport {
+func newS3Transport(responseHeaderTimeout time.Duration) *http.Transport {
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
@@ -609,7 +653,7 @@ func newS3Transport() *http.Transport {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DisableCompression:    true,
-		ResponseHeaderTimeout: sourceResponseHeaderTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
 	}
 }
 
@@ -692,7 +736,7 @@ func (c *Impl) init(_ context.Context) error {
 		Creds:     credentials.NewStaticV4(c.accessKey, c.secretKey, ""),
 		Secure:    secure,
 		Region:    c.region,
-		Transport: lastModifiedFallbackTransport{base: newS3Transport()},
+		Transport: lastModifiedFallbackTransport{base: newS3Transport(c.responseHeaderTimeout), log: c.log},
 	}
 
 	if c.usePathStyle {

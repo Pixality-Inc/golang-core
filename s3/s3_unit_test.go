@@ -11,6 +11,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/pixality-inc/golang-core/logger"
 )
 
 var errTestDummy = errors.New("dummy inner transport error")
@@ -309,12 +311,35 @@ func TestDirEntriesFromObjects(t *testing.T) {
 func TestNewS3Transport(t *testing.T) {
 	t.Parallel()
 
-	tr := newS3Transport()
+	tr := newS3Transport(sourceResponseHeaderTimeout)
 
 	require.NotNil(t, tr)
 	assert.Equal(t, sourceResponseHeaderTimeout, tr.ResponseHeaderTimeout,
 		"a backend that stalls before the first response byte must time out, not block forever")
 	assert.True(t, tr.DisableCompression, "responses must reach backends byte-for-byte")
+
+	custom := newS3Transport(3 * time.Minute)
+	assert.Equal(t, 3*time.Minute, custom.ResponseHeaderTimeout,
+		"the configured response header timeout must flow into the transport")
+}
+
+func TestWithResponseHeaderTimeout(t *testing.T) {
+	t.Parallel()
+
+	newImpl := func(opts ...Option) *Impl {
+		client := NewClient("t", "https://example.invalid", "us-east-1", "", "", "bucket", "", "", true, opts...)
+
+		impl, ok := client.(*Impl)
+		require.True(t, ok)
+
+		return impl
+	}
+
+	assert.Equal(t, sourceResponseHeaderTimeout, newImpl().responseHeaderTimeout,
+		"default must be the source response header timeout")
+
+	assert.Equal(t, 3*time.Minute, newImpl(WithResponseHeaderTimeout(3*time.Minute)).responseHeaderTimeout,
+		"the option must override the default")
 }
 
 // fakeRoundTripper builds the response inline so the only *http.Response
@@ -322,6 +347,7 @@ func TestNewS3Transport(t *testing.T) {
 // body the tests then close (keeping the bodyclose linter satisfied).
 type fakeRoundTripper struct {
 	header http.Header
+	status int
 	err    error
 }
 
@@ -330,7 +356,12 @@ func (f fakeRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 		return nil, f.err
 	}
 
-	return &http.Response{StatusCode: http.StatusOK, Header: f.header, Body: http.NoBody}, nil
+	status := f.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+
+	return &http.Response{StatusCode: status, Header: f.header, Body: http.NoBody}, nil
 }
 
 func headerWith(lastModified string, present bool) http.Header {
@@ -400,6 +431,24 @@ func TestLastModifiedFallbackTransport(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = resp.Body.Close() })
 		assert.Empty(t, resp.Header.Get(lastModifiedHeader))
+	})
+
+	t.Run("passes a 503 through unchanged and logs it without panicking", func(t *testing.T) {
+		t.Parallel()
+
+		header := http.Header{}
+		header.Set("Retry-After", "2")
+
+		rt := lastModifiedFallbackTransport{
+			base: fakeRoundTripper{status: http.StatusServiceUnavailable, header: header},
+			log:  logger.NewLoggableImplWithService("s3-test"),
+		}
+
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		assert.Equal(t, "2", resp.Header.Get("Retry-After"))
 	})
 
 	t.Run("propagates the underlying transport error", func(t *testing.T) {
