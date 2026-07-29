@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/pixality-inc/golang-core/logger"
 )
@@ -93,7 +94,10 @@ func (c *ControlFlowImpl) WaitForInterrupt() {
 	signal.NotifyContext(c.context)
 
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt)
+
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+
+	defer signal.Stop(ch)
 
 	select {
 	case <-c.context.Done():
