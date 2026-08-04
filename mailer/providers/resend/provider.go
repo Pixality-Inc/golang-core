@@ -3,16 +3,34 @@ package resend
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/pixality-inc/golang-core/logger"
 	"github.com/pixality-inc/golang-core/mailer"
 	resendGo "github.com/resend/resend-go/v3"
 )
 
+const sendEmailPath = "emails"
+
 var (
-	errGetContent = errors.New("get content")
-	errSend       = errors.New("send")
+	errGetContent   = errors.New("get content")
+	errBuildRequest = errors.New("build request")
+	errSend         = errors.New("send")
 )
+
+// sendEmailRequest repeats the fields of resendGo.SendEmailRequest used by this provider,
+// the only difference is omitempty on subject. resend serializes subject unconditionally and
+// a subject sent together with a template overrides the subject stored in that template,
+// so an empty subject has to be left out of the payload entirely
+type sendEmailRequest struct {
+	From     string                  `json:"from"`
+	To       []string                `json:"to"`
+	Subject  string                  `json:"subject,omitempty"`
+	Cc       []string                `json:"cc,omitempty"`
+	Bcc      []string                `json:"bcc,omitempty"`
+	Html     string                  `json:"html,omitempty"`
+	Template *resendGo.EmailTemplate `json:"template,omitempty"`
+}
 
 type Resend struct {
 	log    logger.Loggable
@@ -38,7 +56,7 @@ func (r *Resend) Send(
 		toEmails = append(toEmails, toAccount.String())
 	}
 
-	params := &resendGo.SendEmailRequest{
+	params := &sendEmailRequest{
 		From:    message.From.String(),
 		To:      toEmails,
 		Subject: message.Subject,
@@ -68,8 +86,15 @@ func (r *Resend) Send(
 		params.Html = content
 	}
 
-	email, err := r.client.Emails.Send(params)
+	request, err := r.client.NewRequest(ctx, http.MethodPost, sendEmailPath, params)
 	if err != nil {
+		return nil, errors.Join(errBuildRequest, err)
+	}
+
+	email := new(resendGo.SendEmailResponse)
+
+	//nolint:bodyclose // the resend client closes the response body on its own
+	if _, err = r.client.Perform(request, email); err != nil {
 		return nil, errors.Join(errSend, err)
 	}
 

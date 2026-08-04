@@ -57,6 +57,14 @@ func TestMailerSend(t *testing.T) {
 			wantErr: mailer.ErrNoSubject,
 		},
 		{
+			name: "template_body_without_subject",
+			message: mailer.NewMessage().
+				WithFrom(mailer.NewAccount("foo@bar.baz")).
+				WithTo(mailer.NewAccount("test@test.te")).
+				WithBody(mailer.NewTemplateBody("tpl-1", nil)),
+			wantErr: nil,
+		},
+		{
 			name: "no_body",
 			message: mailer.NewMessage().
 				WithFrom(mailer.NewAccount("foo@bar.baz")).
