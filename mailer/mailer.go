@@ -44,12 +44,13 @@ func (m *Impl) Send(ctx context.Context, message *Message) (Result, error) {
 		return nil, ErrNoTo
 	}
 
-	if message.Subject == "" {
-		return nil, ErrNoSubject
-	}
-
 	if message.Body == nil {
 		return nil, ErrNoBody
+	}
+
+	// template body keeps its own subject on the provider side so empty subject is valid for it
+	if message.Subject == "" && message.Body.Type() != BodyTypeTemplate {
+		return nil, ErrNoSubject
 	}
 
 	if len(message.Attachments) > 0 {

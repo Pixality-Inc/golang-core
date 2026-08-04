@@ -47,6 +47,25 @@ func captureHandler(t *testing.T, requests chan<- resendGo.SendEmailRequest) htt
 	}
 }
 
+// rawCaptureHandler keeps the payload as it came over the wire, needed to tell an empty
+// subject from a subject that is not sent at all
+func rawCaptureHandler(t *testing.T, payloads chan<- map[string]any) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		payload := make(map[string]any)
+
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+
+		payloads <- payload
+
+		w.Header().Set("Content-Type", "application/json")
+
+		_, err := w.Write([]byte(`{"id":"email-123"}`))
+		assert.NoError(t, err)
+	}
+}
+
 func validMessage(body mailer.Body) *mailer.Message {
 	return mailer.NewMessage().
 		WithFrom(mailer.NewAccount("from@example.com").WithName("Sender")).
@@ -124,6 +143,40 @@ func TestSendTemplateBody(t *testing.T) {
 	assert.Equal(t, "tpl-1", received.Template.Id)
 	assert.Equal(t, map[string]any{"key": "value"}, received.Template.Variables)
 	assert.Empty(t, received.Html)
+}
+
+func TestSendTemplateBodyWithoutSubject(t *testing.T) {
+	t.Parallel()
+
+	payloads := make(chan map[string]any, 1)
+	provider := newTestProvider(t, rawCaptureHandler(t, payloads))
+
+	message := mailer.NewMessage().
+		WithFrom(mailer.NewAccount("from@example.com")).
+		WithTo(mailer.NewAccount("to@example.com")).
+		WithBody(mailer.NewTemplateBody("tpl-1", map[string]any{"key": "value"}))
+
+	_, err := provider.Send(t.Context(), message)
+	require.NoError(t, err)
+
+	payload := <-payloads
+
+	assert.NotContains(t, payload, "subject")
+	assert.Contains(t, payload, "template")
+}
+
+func TestSendKeepsSubjectWhenSet(t *testing.T) {
+	t.Parallel()
+
+	payloads := make(chan map[string]any, 1)
+	provider := newTestProvider(t, rawCaptureHandler(t, payloads))
+
+	_, err := provider.Send(t.Context(), validMessage(mailer.NewTemplateBody("tpl-1", nil)))
+	require.NoError(t, err)
+
+	payload := <-payloads
+
+	assert.Equal(t, "subject", payload["subject"])
 }
 
 func TestSendApiError(t *testing.T) {
