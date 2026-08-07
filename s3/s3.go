@@ -435,21 +435,21 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (bool, error) 
 	return true, nil
 }
 
-// isNotFoundErr reports whether err represents a 404 for an S3 object.
-// minio-go normalizes errors from AWS S3 / MinIO / Hetzner / etc. into
-// minio.ErrorResponse via ToErrorResponse — we accept NoSuchKey (S3 spec
-// code), NotFound (returned by some providers / for HEAD without body),
-// and a raw HTTP 404 status as the catch-all.
+// isNotFoundErr reports whether err represents a 404 for an S3 object. The codes that name a
+// missing key live in storage.IsNotFound, shared with the other providers; the raw 404 status
+// is read as not-found only here, because the callers below ask about one named object (a
+// HEAD), where a 404 without a body can mean nothing else. On a listing minio-go labels the
+// same bodyless 404 as NoSuchBucket, which is a failure rather than an empty folder.
 func isNotFoundErr(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	resp := minio.ToErrorResponse(err)
+	if storage.IsNotFound(err) {
+		return true
+	}
 
-	return resp.Code == "NoSuchKey" ||
-		resp.Code == "NotFound" ||
-		resp.StatusCode == http.StatusNotFound
+	return minio.ToErrorResponse(err).StatusCode == http.StatusNotFound
 }
 
 func (c *Impl) GetPublicUrl(_ context.Context, objectName string) (string, error) {

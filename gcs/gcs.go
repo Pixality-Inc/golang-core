@@ -370,7 +370,7 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (*gcs.ObjectAt
 	objectFullName := c.getObjectFullName(objectName)
 
 	attrs, err := c.client.Bucket(c.bucketName).Object(objectFullName).Attrs(ctx)
-	if err != nil && errors.Is(err, gcs.ErrObjectNotExist) {
+	if err != nil && storage.IsNotFound(err) {
 		return nil, false, nil
 	} else if err != nil {
 		return nil, false, err
