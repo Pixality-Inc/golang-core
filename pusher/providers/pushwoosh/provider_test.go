@@ -31,7 +31,7 @@ func Test_getTimezoneOffsetSeconds(t *testing.T) {
 		},
 		{
 			name:     "moscow",
-			timezone: "europe/moscow",
+			timezone: "Europe/Moscow",
 			expected: 10800,
 		},
 	}
