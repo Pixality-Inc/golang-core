@@ -35,6 +35,9 @@ linters:
       package-average: 0
     dupl:
       threshold: 150
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/goccy/go-json
     errcheck:
       check-type-assertions: true
       check-blank: true

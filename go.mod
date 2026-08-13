@@ -146,3 +146,7 @@ require (
 	google.golang.org/grpc v1.80.0 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )
+
+// pinned to the fork until goccy/go-json#503 is merged: the released encoder segfaults on a struct
+// carried inside the interface word, see json/json_test.go
+replace github.com/goccy/go-json => github.com/Pixality-Inc/go-json v0.0.0-20260812110253-98955a1b4857
