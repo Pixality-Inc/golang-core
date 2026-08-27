@@ -81,7 +81,7 @@ func (t *Impl) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Join(errContext, ctx.Err())
 
 		case <-clocks.After(t.duration):
 			if err := loop(); err != nil {
