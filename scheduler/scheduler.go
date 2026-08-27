@@ -27,6 +27,12 @@ func New(
 	hasNext func(ctx context.Context) bool,
 	options ...Option,
 ) Scheduler {
+	if hasNext == nil {
+		hasNext = func(ctx context.Context) bool {
+			return false
+		}
+	}
+
 	impl := &Impl{
 		duration:   duration,
 		tick:       tick,
