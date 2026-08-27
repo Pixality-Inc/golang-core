@@ -64,13 +64,7 @@ func (t *Impl) Start(ctx context.Context) error {
 				return errors.Join(errContext, err)
 			}
 
-			hasNext := t.hasNext(ctx)
-
-			if err := ctx.Err(); err != nil {
-				return errors.Join(errContext, err)
-			}
-
-			if !hasNext {
+			if !t.hasNext(ctx) {
 				break
 			}
 		}
@@ -90,10 +84,6 @@ func (t *Impl) Start(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-clocks.After(t.duration):
-			if err := ctx.Err(); err != nil {
-				return errors.Join(errContext, err)
-			}
-
 			if err := loop(); err != nil {
 				return err
 			}
