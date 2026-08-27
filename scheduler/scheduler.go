@@ -15,59 +15,83 @@ type Scheduler interface {
 }
 
 type Impl struct {
-	duration time.Duration
-	tick     func(ctx context.Context)
-	hasNext  func(ctx context.Context) bool
+	duration   time.Duration
+	tick       func(ctx context.Context)
+	hasNext    func(ctx context.Context) bool
+	runAtStart bool
 }
 
 func New(
 	duration time.Duration,
 	tick func(ctx context.Context),
 	hasNext func(ctx context.Context) bool,
+	options ...Option,
 ) Scheduler {
-	return &Impl{
-		duration: duration,
-		tick:     tick,
-		hasNext:  hasNext,
+	if hasNext == nil {
+		hasNext = func(ctx context.Context) bool {
+			return false
+		}
 	}
+
+	impl := &Impl{
+		duration:   duration,
+		tick:       tick,
+		hasNext:    hasNext,
+		runAtStart: false,
+	}
+
+	for _, opt := range options {
+		opt(impl)
+	}
+
+	return impl
 }
 
 func NewFromHandler(
 	duration time.Duration,
 	handler Handler,
+	options ...Option,
 ) Scheduler {
-	return New(duration, handler.Tick, handler.HasNext)
+	return New(duration, handler.Tick, handler.HasNext, options...)
 }
 
 func (t *Impl) Start(ctx context.Context) error {
 	clocks := clock.GetClock(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
+	loop := func() error {
+		for {
+			if err := ctx.Err(); err != nil {
+				return errors.Join(errContext, err)
+			}
 
-		case <-clocks.After(t.duration):
+			t.tick(ctx)
+
 			if err := ctx.Err(); err != nil {
 				return errors.Join(errContext, err)
 			}
 
 			if !t.hasNext(ctx) {
-				continue
+				break
 			}
+		}
 
-			t.tick(ctx)
+		return nil
+	}
 
-			for {
-				if err := ctx.Err(); err != nil {
-					return errors.Join(errContext, err)
-				}
+	if t.runAtStart {
+		if err := loop(); err != nil {
+			return err
+		}
+	}
 
-				if !t.hasNext(ctx) {
-					break
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.Join(errContext, ctx.Err())
 
-				t.tick(ctx)
+		case <-clocks.After(t.duration):
+			if err := loop(); err != nil {
+				return err
 			}
 		}
 	}
