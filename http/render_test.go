@@ -82,6 +82,7 @@ func TestResponseRendererErrorMapping(t *testing.T) {
 		{"not found", ErrNotFound, fasthttp.StatusNotFound},
 		{"unauthorized", ErrUnauthorized, fasthttp.StatusUnauthorized},
 		{"forbidden", ErrForbidden, fasthttp.StatusForbidden},
+		{"payment required", ErrPaymentRequired, fasthttp.StatusPaymentRequired},
 		{"internal", ErrInternalServerError, fasthttp.StatusInternalServerError},
 		{"unknown error", errRender, fasthttp.StatusInternalServerError},
 	}
@@ -114,6 +115,7 @@ func TestResponseRendererErrorHelpers(t *testing.T) {
 		{func(ctx *fasthttp.RequestCtx) { renderer.NotFound(ctx, errRender) }, fasthttp.StatusNotFound},
 		{func(ctx *fasthttp.RequestCtx) { renderer.Unauthorized(ctx, errRender) }, fasthttp.StatusUnauthorized},
 		{func(ctx *fasthttp.RequestCtx) { renderer.Forbidden(ctx, errRender) }, fasthttp.StatusForbidden},
+		{func(ctx *fasthttp.RequestCtx) { renderer.PaymentRequired(ctx, errRender) }, fasthttp.StatusPaymentRequired},
 		{func(ctx *fasthttp.RequestCtx) { renderer.InternalServerError(ctx, errRender) }, fasthttp.StatusInternalServerError},
 	}
 
@@ -236,6 +238,8 @@ func TestPackageLevelHelpers(t *testing.T) {
 		{"unauthorized with err", func(ctx *fasthttp.RequestCtx) { Unauthorized(ctx, errRender) }, fasthttp.StatusUnauthorized},
 		{"forbidden", func(ctx *fasthttp.RequestCtx) { Forbidden(ctx) }, fasthttp.StatusForbidden},
 		{"forbidden with err", func(ctx *fasthttp.RequestCtx) { Forbidden(ctx, errRender) }, fasthttp.StatusForbidden},
+		{"payment required", func(ctx *fasthttp.RequestCtx) { PaymentRequired(ctx) }, fasthttp.StatusPaymentRequired},
+		{"payment required with err", func(ctx *fasthttp.RequestCtx) { PaymentRequired(ctx, errRender) }, fasthttp.StatusPaymentRequired},
 		{"internal", func(ctx *fasthttp.RequestCtx) { InternalServerError(ctx) }, fasthttp.StatusInternalServerError},
 		{"internal with err", func(ctx *fasthttp.RequestCtx) { InternalServerError(ctx, errRender) }, fasthttp.StatusInternalServerError},
 		{"error", func(ctx *fasthttp.RequestCtx) { Error(ctx, errRender) }, fasthttp.StatusInternalServerError},

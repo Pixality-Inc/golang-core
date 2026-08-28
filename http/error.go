@@ -7,5 +7,6 @@ var (
 	ErrNotFound            = errors.New("not found")
 	ErrUnauthorized        = errors.New("unauthorized")
 	ErrForbidden           = errors.New("forbidden")
+	ErrPaymentRequired     = errors.New("payment required")
 	ErrInternalServerError = errors.New("internal server error")
 )

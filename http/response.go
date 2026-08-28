@@ -136,6 +136,16 @@ func Forbidden(ctx *fasthttp.RequestCtx, errs ...error) {
 	})
 }
 
+func PaymentRequired(ctx *fasthttp.RequestCtx, errs ...error) {
+	withResponseRenderer(ctx, func(rr ResponseRenderer) {
+		if len(errs) > 0 {
+			rr.PaymentRequired(ctx, errs[0])
+		} else {
+			rr.PaymentRequired(ctx, nil)
+		}
+	})
+}
+
 func HandleHttp[T proto.Message](ctx *fasthttp.RequestCtx, response HttpResponse[T]) {
 	model := response.Model()
 	options := response.Options()
