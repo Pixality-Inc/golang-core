@@ -131,6 +131,96 @@ func TestRoundFloat64ToPrecision(t *testing.T) {
 	}
 }
 
+func TestRoundFloat64ToInt64(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value float64
+		want  int64
+	}{
+		{
+			name:  "zero",
+			value: 0,
+			want:  0,
+		},
+		{
+			name:  "positive number rounds down",
+			value: 1.49,
+			want:  1,
+		},
+		{
+			name:  "positive half rounds away from zero",
+			value: 1.5,
+			want:  2,
+		},
+		{
+			name:  "positive number rounds up",
+			value: 1.51,
+			want:  2,
+		},
+		{
+			name:  "negative number rounds toward zero",
+			value: -1.49,
+			want:  -1,
+		},
+		{
+			name:  "negative half rounds away from zero",
+			value: -1.5,
+			want:  -2,
+		},
+		{
+			name:  "negative number rounds away from zero",
+			value: -1.51,
+			want:  -2,
+		},
+		{
+			name:  "positive fraction below half rounds to zero",
+			value: 0.49,
+			want:  0,
+		},
+		{
+			name:  "positive half rounds to one",
+			value: 0.5,
+			want:  1,
+		},
+		{
+			name:  "negative fraction below half rounds to zero",
+			value: -0.49,
+			want:  0,
+		},
+		{
+			name:  "negative half rounds to negative one",
+			value: -0.5,
+			want:  -1,
+		},
+		{
+			name:  "positive integer remains unchanged",
+			value: 42,
+			want:  42,
+		},
+		{
+			name:  "negative integer remains unchanged",
+			value: -42,
+			want:  -42,
+		},
+		{
+			name:  "large exactly representable integer",
+			value: 9_007_199_254_740_991,
+			want:  9_007_199_254_740_991,
+		},
+	}
+
+	for _, testcase := range tests {
+		t.Run(testcase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := RoundFloat64ToInt64(testcase.value)
+			require.Equal(t, testcase.want, got)
+		})
+	}
+}
+
 func TestRoundFloat64ToPrecision_EdgeCases(t *testing.T) {
 	t.Parallel()
 
