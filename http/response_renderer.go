@@ -24,6 +24,7 @@ type ResponseRenderer interface {
 	NotFound(ctx *fasthttp.RequestCtx, err error)
 	Unauthorized(ctx *fasthttp.RequestCtx, err error)
 	Forbidden(ctx *fasthttp.RequestCtx, err error)
+	PaymentRequired(ctx *fasthttp.RequestCtx, err error)
 }
 
 type ResponseRendererImpl struct {
@@ -74,6 +75,9 @@ func (r *ResponseRendererImpl) Error(ctx *fasthttp.RequestCtx, err error) {
 	case errors.Is(err, ErrForbidden):
 		statusCode = fasthttp.StatusForbidden
 
+	case errors.Is(err, ErrPaymentRequired):
+		statusCode = fasthttp.StatusPaymentRequired
+
 	case errors.Is(err, ErrInternalServerError):
 		statusCode = fasthttp.StatusInternalServerError
 
@@ -105,4 +109,8 @@ func (r *ResponseRendererImpl) Unauthorized(ctx *fasthttp.RequestCtx, err error)
 
 func (r *ResponseRendererImpl) Forbidden(ctx *fasthttp.RequestCtx, err error) {
 	r.Error(ctx, errors.Join(ErrForbidden, err))
+}
+
+func (r *ResponseRendererImpl) PaymentRequired(ctx *fasthttp.RequestCtx, err error) {
+	r.Error(ctx, errors.Join(ErrPaymentRequired, err))
 }
