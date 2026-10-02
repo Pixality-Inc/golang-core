@@ -3,6 +3,7 @@ package s3
 import (
 	"context"
 	"io"
+	"io/fs"
 
 	"github.com/pixality-inc/golang-core/storage"
 )
@@ -19,6 +20,10 @@ func NewStorageProvider(s3 Client) *StorageProvider {
 
 func (p *StorageProvider) FileExists(ctx context.Context, path string) (bool, error) {
 	return p.s3.FileExists(ctx, path)
+}
+
+func (p *StorageProvider) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	return p.s3.Stat(ctx, path)
 }
 
 func (p *StorageProvider) DeleteFile(ctx context.Context, path string) error {

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"sync"
 
 	"github.com/google/uuid"
@@ -49,6 +51,8 @@ type Client interface {
 	DownloadFile(ctx context.Context, objectName string, filename string) error
 
 	FileExists(ctx context.Context, objectName string) (*gcs.ObjectAttrs, bool, error)
+
+	Stat(ctx context.Context, objectName string) (fs.FileInfo, error)
 
 	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
 
@@ -377,6 +381,22 @@ func (c *Impl) FileExists(ctx context.Context, objectName string) (*gcs.ObjectAt
 	}
 
 	return attrs, true, nil
+}
+
+// Stat returns metadata for an exact object without downloading its contents.
+func (c *Impl) Stat(ctx context.Context, objectName string) (fs.FileInfo, error) {
+	if err := c.init(ctx); err != nil {
+		return nil, err
+	}
+
+	objectFullName := c.getObjectFullName(objectName)
+
+	attrs, err := c.client.Bucket(c.bucketName).Object(objectFullName).Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("gcs: stat '%s': %w", objectFullName, err)
+	}
+
+	return storage.NewFileEntry(path.Base(objectFullName), attrs.Size, attrs.Updated).Info()
 }
 
 func (c *Impl) CreateMultipartUpload(_ context.Context, _ string) (storage.MultipartUpload, error) {

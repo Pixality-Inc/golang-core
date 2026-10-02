@@ -3,6 +3,7 @@ package gcs
 import (
 	"context"
 	"io"
+	"io/fs"
 
 	"github.com/pixality-inc/golang-core/storage"
 )
@@ -41,6 +42,10 @@ func (p *StorageProvider) ReadFile(ctx context.Context, path string) (io.ReadClo
 
 func (p *StorageProvider) ReadDir(ctx context.Context, path string) ([]storage.DirEntry, error) {
 	return p.gcs.ReadDir(ctx, path)
+}
+
+func (p *StorageProvider) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	return p.gcs.Stat(ctx, path)
 }
 
 func (p *StorageProvider) MkDir(ctx context.Context, path string) error {

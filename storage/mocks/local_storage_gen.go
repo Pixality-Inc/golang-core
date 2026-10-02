@@ -12,6 +12,7 @@ package mock_storage
 import (
 	context "context"
 	io "io"
+	fs "io/fs"
 	reflect "reflect"
 
 	storage "github.com/pixality-inc/golang-core/storage"
@@ -256,6 +257,21 @@ func (m *MockLocalStorage) ReadFile(ctx context.Context, path string) (io.ReadCl
 func (mr *MockLocalStorageMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockLocalStorage)(nil).ReadFile), ctx, path)
+}
+
+// Stat mocks base method.
+func (m *MockLocalStorage) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stat", ctx, path)
+	ret0, _ := ret[0].(fs.FileInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stat indicates an expected call of Stat.
+func (mr *MockLocalStorageMockRecorder) Stat(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockLocalStorage)(nil).Stat), ctx, path)
 }
 
 // UploadMultipartChunk mocks base method.
@@ -510,6 +526,21 @@ func (m *MockLocalStorageProvider) ReadFile(ctx context.Context, path string) (i
 func (mr *MockLocalStorageProviderMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockLocalStorageProvider)(nil).ReadFile), ctx, path)
+}
+
+// Stat mocks base method.
+func (m *MockLocalStorageProvider) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stat", ctx, path)
+	ret0, _ := ret[0].(fs.FileInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stat indicates an expected call of Stat.
+func (mr *MockLocalStorageProviderMockRecorder) Stat(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockLocalStorageProvider)(nil).Stat), ctx, path)
 }
 
 // UploadMultipartChunk mocks base method.

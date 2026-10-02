@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"net/http"
 	"net/url"
@@ -71,6 +72,7 @@ type Client interface {
 	DownloadFile(ctx context.Context, objectName string, filename string) error
 
 	FileExists(ctx context.Context, objectName string) (bool, error)
+	Stat(ctx context.Context, objectName string) (fs.FileInfo, error)
 
 	ReadDir(ctx context.Context, objectName string) ([]storage.DirEntry, error)
 

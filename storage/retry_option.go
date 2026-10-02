@@ -17,7 +17,7 @@ type Option func(*Impl)
 type Retryable func(error) bool
 
 // WithRetry enables bounded retry for the idempotent, re-runnable Storage
-// operations: the path-based ops (FileExists, DeleteFile, DeleteDir, ReadDir,
+// operations: the path-based ops (FileExists, Stat, DeleteFile, DeleteDir, ReadDir,
 // MkDir, Copy, Move, GetPublicUrl), WriteFile (the source file is re-opened on
 // every attempt), ReadFile (only the stream open is retried), and DownloadFile
 // (the destination file is re-created on every attempt).
