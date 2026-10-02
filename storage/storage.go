@@ -53,6 +53,11 @@ func NewMultipartChunk(number int, etag string) MultipartChunk {
 
 type Provider interface {
 	FileExists(ctx context.Context, path string) (bool, error)
+
+	// Stat returns metadata for one path without reading its contents. Object
+	// stores stat exact keys; virtual directories are only exposed by ReadDir.
+	Stat(ctx context.Context, path string) (fs.FileInfo, error)
+
 	DeleteFile(ctx context.Context, path string) error
 	DeleteDir(ctx context.Context, path string) error
 	Write(ctx context.Context, path string, file io.Reader) error
@@ -81,6 +86,11 @@ type UrlProvider interface {
 //go:generate mockgen -destination mocks/storage_gen.go -source storage.go
 type Storage interface {
 	FileExists(ctx context.Context, path string) (bool, error)
+
+	// Stat returns metadata for one path without reading its contents. A missing
+	// path returns an error recognized by IsNotFound.
+	Stat(ctx context.Context, path string) (fs.FileInfo, error)
+
 	DeleteFile(ctx context.Context, path string) error
 	DeleteDir(ctx context.Context, path string) error
 	Write(ctx context.Context, path string, file io.Reader) error

@@ -386,6 +386,21 @@ func (mr *MockProviderMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockProvider)(nil).ReadFile), ctx, path)
 }
 
+// Stat mocks base method.
+func (m *MockProvider) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stat", ctx, path)
+	ret0, _ := ret[0].(fs.FileInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stat indicates an expected call of Stat.
+func (mr *MockProviderMockRecorder) Stat(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockProvider)(nil).Stat), ctx, path)
+}
+
 // UploadMultipartChunk mocks base method.
 func (m *MockProvider) UploadMultipartChunk(ctx context.Context, path string, upload storage.MultipartUpload, chunkNumber int, body io.Reader, size int64) (storage.MultipartChunk, error) {
 	m.ctrl.T.Helper()
@@ -677,6 +692,21 @@ func (m *MockStorage) ReadFile(ctx context.Context, path string) (io.ReadCloser,
 func (mr *MockStorageMockRecorder) ReadFile(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockStorage)(nil).ReadFile), ctx, path)
+}
+
+// Stat mocks base method.
+func (m *MockStorage) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stat", ctx, path)
+	ret0, _ := ret[0].(fs.FileInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stat indicates an expected call of Stat.
+func (mr *MockStorageMockRecorder) Stat(ctx, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockStorage)(nil).Stat), ctx, path)
 }
 
 // UploadMultipartChunk mocks base method.

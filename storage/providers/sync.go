@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"slices"
 
@@ -42,6 +43,26 @@ func (s *SyncImpl) FileExists(ctx context.Context, path string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// Stat returns metadata from the first available storage, like ReadFile.
+func (s *SyncImpl) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	if len(s.storages) == 0 {
+		return nil, fmt.Errorf("%w: no storages configured", ErrStorageFailed)
+	}
+
+	var errs []error
+
+	for _, entry := range s.storages {
+		info, err := entry.Stat(ctx, path)
+		if err == nil {
+			return info, nil
+		}
+
+		errs = append(errs, err)
+	}
+
+	return nil, fmt.Errorf("%w: failed to stat %s: %w", ErrStorageFailed, path, errors.Join(errs...))
 }
 
 func (s *SyncImpl) DeleteFile(ctx context.Context, path string) error {

@@ -29,6 +29,8 @@ func newOsStorage(t *testing.T) (storage.Storage, string) {
 }
 
 type copyFallbackStorage struct {
+	storage.Storage
+
 	files map[string]string
 
 	nativeCopyErr error

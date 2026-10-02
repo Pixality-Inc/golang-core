@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
 	"github.com/pixality-inc/golang-core/logger"
@@ -50,6 +51,26 @@ func (s *Impl) FileExists(ctx context.Context, path string) (bool, error) {
 	}
 
 	return result, nil
+}
+
+func (s *Impl) Stat(ctx context.Context, path string) (fs.FileInfo, error) {
+	var info fs.FileInfo
+
+	err := s.withRetry(ctx, func() error {
+		result, err := s.provider.Stat(ctx, path)
+		if err != nil {
+			return err
+		}
+
+		info = result
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage.Stat(%s): %w", path, err)
+	}
+
+	return info, nil
 }
 
 func (s *Impl) DeleteFile(ctx context.Context, path string) error {

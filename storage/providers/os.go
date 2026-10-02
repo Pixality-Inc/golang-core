@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -44,6 +45,15 @@ func (p *OsProvider) FileExists(ctx context.Context, path string) (bool, error) 
 	}
 
 	return true, nil
+}
+
+func (p *OsProvider) Stat(_ context.Context, path string) (fs.FileInfo, error) {
+	info, err := os.Stat(p.getFullPath(path))
+	if err != nil {
+		return nil, fmt.Errorf("stat: %w", err)
+	}
+
+	return info, nil
 }
 
 func (p *OsProvider) DeleteFile(ctx context.Context, path string) error {
