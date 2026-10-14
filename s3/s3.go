@@ -102,6 +102,10 @@ type Impl struct {
 	// overrides it.
 	responseHeaderTimeout time.Duration
 
+	// forceGzipAcceptEncoding makes Download send Accept-Encoding: gzip. NewClient
+	// seeds it with true and WithForceGzipAcceptEncoding overrides it.
+	forceGzipAcceptEncoding bool
+
 	client *minio.Client
 	mutex  sync.Mutex
 }
@@ -118,6 +122,19 @@ type Option func(*Impl)
 func WithResponseHeaderTimeout(timeout time.Duration) Option {
 	return func(c *Impl) {
 		c.responseHeaderTimeout = timeout
+	}
+}
+
+// WithForceGzipAcceptEncoding controls whether Download sends Accept-Encoding: gzip.
+// default is true: seaweedfs unpacks objects stored with Content-Encoding: gzip
+// unless the client advertises gzip. it is turned off for backends that compress
+// on the fly instead, e.g. cloudflare r2: asked for gzip it compresses plain
+// json/txt objects and weakens their etag to W/"...", minio-go then sends that
+// weak etag in If-Match on the follow-up GET and r2 answers 412 every time.
+// r2 returns objects stored with Content-Encoding: gzip as is without the header.
+func WithForceGzipAcceptEncoding(force bool) Option {
+	return func(c *Impl) {
+		c.forceGzipAcceptEncoding = force
 	}
 }
 
@@ -141,16 +158,17 @@ func NewClient(
 				"bucket": bucketName,
 			},
 		),
-		name:                  name,
-		bucketName:            bucketName,
-		baseDir:               baseDir,
-		basePublicUrl:         basePublicUrl,
-		endpoint:              endpoint,
-		region:                region,
-		accessKey:             accessKey,
-		secretKey:             secretKey,
-		usePathStyle:          usePathStyle,
-		responseHeaderTimeout: sourceResponseHeaderTimeout,
+		name:                    name,
+		bucketName:              bucketName,
+		baseDir:                 baseDir,
+		basePublicUrl:           basePublicUrl,
+		endpoint:                endpoint,
+		region:                  region,
+		accessKey:               accessKey,
+		secretKey:               secretKey,
+		usePathStyle:            usePathStyle,
+		responseHeaderTimeout:   sourceResponseHeaderTimeout,
+		forceGzipAcceptEncoding: true,
 	}
 
 	for _, opt := range opts {
@@ -364,8 +382,11 @@ func (c *Impl) Download(ctx context.Context, objectName string) (io.ReadCloser, 
 	// the stored bytes as-is". Pairs with DisableCompression: true on the
 	// transport (set in init) which keeps net/http from auto-decompressing on
 	// the way back. This is the S3 equivalent of GCS's ReadCompressed(true).
+	// Backends that compress on the fly opt out via WithForceGzipAcceptEncoding.
 	opts := minio.GetObjectOptions{}
-	opts.Set("Accept-Encoding", "gzip")
+	if c.forceGzipAcceptEncoding {
+		opts.Set("Accept-Encoding", "gzip")
+	}
 
 	obj, err := c.client.GetObject(ctx, c.bucketName, objectFullName, opts)
 	if err != nil {
