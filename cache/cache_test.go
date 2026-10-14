@@ -98,7 +98,7 @@ func TestCache_Get(t *testing.T) {
 				return []byte("42"), nil
 			},
 			unmarshal: func(_ []byte, v any) error {
-				*(v.(*int)) = 42 // nolint:errcheck,forcetypeassert
+				*v.(*int) = 42 // nolint:errcheck,forcetypeassert
 
 				return nil
 			},

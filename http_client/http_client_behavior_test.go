@@ -210,7 +210,7 @@ func TestClientImpl_RequestIdPropagation(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "test-request-id", r.Header.Get("X-Request-Id"))
+		assert.Equal(t, "test-request-id", r.Header.Get("X-Request-ID"))
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -230,7 +230,7 @@ func TestClientImpl_NoRequestIdWithoutContextValue(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Empty(t, r.Header.Get("X-Request-Id"))
+		assert.Empty(t, r.Header.Get("X-Request-ID"))
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()

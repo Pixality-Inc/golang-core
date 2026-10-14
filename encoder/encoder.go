@@ -57,7 +57,7 @@ func xorEncrypt(key, data []byte) []byte {
 	res := make([]byte, len(data))
 
 	for index, s := range data {
-		res[index] = s ^ key[(index)%len(key)]
+		res[index] = s ^ key[index%len(key)]
 	}
 
 	return res
@@ -67,7 +67,7 @@ func xorDecrypt(key []byte, data []byte) (result []byte) {
 	res := make([]byte, len(data))
 
 	for index, s := range data {
-		res[index] = s ^ key[(index)%len(key)]
+		res[index] = s ^ key[index%len(key)]
 	}
 
 	return res

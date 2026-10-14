@@ -346,8 +346,7 @@ func isNetworkError(err error) bool {
 	}
 
 	// dial errors, dns errors and *net.OpError (broken pipe, reset); fasthttp.ErrTimeout is not one
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[net.Error](err); ok { //nolint:errcheck // only the match result is needed
 		return true
 	}
 

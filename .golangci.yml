@@ -12,6 +12,7 @@ linters:
     - gomodguard
     - exhaustive
     - exhaustruct
+    - exhaustruct_v5
     - gochecknoglobals
     - godot
     - godox
@@ -25,6 +26,7 @@ linters:
     - tagliatelle
     - wrapcheck
     - wsl
+    - wsl_v5
     - noinlineerr
     - unparam
     - testpackage

@@ -26,8 +26,7 @@ func ShouldIgnoreErrorForCircuitBreaker(err error) bool {
 	}
 
 	// Check for postgres-specific error codes
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return shouldIgnorePgError(pgErr)
 	}
 
