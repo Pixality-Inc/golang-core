@@ -66,8 +66,7 @@ func ShouldRetry(statusCode int, err error) bool {
 			return true
 		}
 
-		var opErr *net.OpError
-		if errors.As(err, &opErr) {
+		if _, ok := errors.AsType[*net.OpError](err); ok { //nolint:errcheck // only the match result is needed
 			return true
 		}
 

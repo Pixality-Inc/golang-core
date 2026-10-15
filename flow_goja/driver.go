@@ -84,7 +84,7 @@ func (d *Goja) ValueToStringSlice(value any) ([]string, error) {
 	case *goja.Object:
 		exportedObject := jsValue.Export()
 
-		array, ok := (exportedObject).([]any)
+		array, ok := exportedObject.([]any)
 		if !ok {
 			return nil, fmt.Errorf("%w: %T is not an array", ErrJsValueToStringArray, exportedObject)
 		}
@@ -130,7 +130,7 @@ func (d *Goja) ValueToMapStringAny(value any) (map[string]any, error) {
 
 	exportedValue := val.Export()
 
-	mapValue, ok := (exportedValue).(map[string]any)
+	mapValue, ok := exportedValue.(map[string]any)
 	if ok {
 		return mapValue, nil
 	}

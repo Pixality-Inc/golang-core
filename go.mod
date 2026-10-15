@@ -14,7 +14,7 @@ require (
 	github.com/georgysavva/scany/v2 v2.1.4
 	github.com/getkin/kin-openapi v0.137.0
 	github.com/gobeam/stringy v0.0.7
-	github.com/goccy/go-json v0.10.6
+	github.com/goccy/go-json v0.11.2
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -146,7 +146,3 @@ require (
 	google.golang.org/grpc v1.80.0 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )
-
-// pinned to the fork until goccy/go-json#503 is merged: the released encoder segfaults on a struct
-// carried inside the interface word, see json/json_test.go
-replace github.com/goccy/go-json => github.com/Pixality-Inc/go-json v0.0.0-20260812110253-98955a1b4857

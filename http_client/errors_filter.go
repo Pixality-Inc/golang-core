@@ -48,8 +48,7 @@ func ShouldIgnoreErrorForCircuitBreaker(err error) bool {
 	}
 
 	// network errors should trigger circuit breaker
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[net.Error](err); ok { //nolint:errcheck // only the match result is needed
 		// timeout or temporary network errors trigger circuit breaker
 		return false
 	}
