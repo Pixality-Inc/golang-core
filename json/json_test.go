@@ -1,6 +1,8 @@
 package json
 
 import (
+	"bytes"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -82,4 +84,45 @@ func TestMarshalPointerToStructOfPointersInSequence(t *testing.T) {
 		_, err := Marshal(input)
 		require.NoError(t, err)
 	}
+}
+
+// the decoder reports the members of an object as written: escaped names decoded, duplicates kept
+func TestDecoderTokensKeepRawMemberNames(t *testing.T) {
+	t.Parallel()
+
+	decoder := NewDecoder(bytes.NewReader([]byte(`{"model":"a","mod\u0065l":"b","MODEL":{"x":[1]}}`)))
+
+	token, err := decoder.Token()
+	require.NoError(t, err)
+	require.Equal(t, Delim('{'), token)
+
+	var (
+		names  []string
+		values []string
+	)
+
+	for decoder.More() {
+		token, err = decoder.Token()
+		require.NoError(t, err)
+
+		name, ok := token.(string)
+		require.True(t, ok)
+
+		var value RawMessage
+
+		require.NoError(t, decoder.Decode(&value))
+
+		names = append(names, name)
+		values = append(values, string(value))
+	}
+
+	token, err = decoder.Token()
+	require.NoError(t, err)
+	require.Equal(t, Delim('}'), token)
+
+	_, err = decoder.Token()
+	require.ErrorIs(t, err, io.EOF)
+
+	require.Equal(t, []string{"model", "model", "MODEL"}, names)
+	require.Equal(t, []string{`"a"`, `"b"`, `{"x":[1]}`}, values)
 }

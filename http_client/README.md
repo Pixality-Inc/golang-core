@@ -329,6 +329,38 @@ resp, err := client.Post(ctx, "/api/users",
 )
 ```
 
+### Streaming Requests
+
+`DoStream` sends a request of any method (a `POST` with a body included) and returns the response
+body as an `io.ReadCloser` that is read while the server still writes it, for example server sent
+events:
+
+```go
+resp, err := client.DoStream(ctx, http.MethodPost, "/v1/responses",
+    http_client.WithBody(body),
+    http_client.WithHeader("Authorization", "Bearer "+key),
+)
+if err != nil {
+    return err
+}
+defer resp.GetBody().Close()
+
+// the status is not checked by the client: 4xx and 5xx responses come back with their body
+fmt.Println(resp.GetStatusCode())
+```
+
+- The response is returned for every status code, unlike `GetStream`, which turns a non-2xx status
+  into an error.
+- `Timeout` bounds waiting for the response headers. Connecting and the TLS handshake are bounded
+  by `StreamConnectTimeout` (30s), or by `Timeout` when it is shorter: a header timeout of minutes
+  for a slow server does not keep a request on a host that does not accept the connection. The body
+  has no deadline: it ends when the server finishes it or when `ctx` is canceled, which aborts the
+  request and closes the connection.
+- There are no retries and no circuit breaker: a stream can not be replayed.
+- The request goes through a `net/http` client built from the same config (TLS, base URL, base
+  headers, request id, redirects, connection limits); fasthttp can not bound the headers alone or
+  abort a request in flight.
+
 ## Request Options
 
 All request options can be combined in any order:

@@ -78,6 +78,9 @@ func (r *ResponseRendererImpl) Error(ctx *fasthttp.RequestCtx, err error) {
 	case errors.Is(err, ErrPaymentRequired):
 		statusCode = fasthttp.StatusPaymentRequired
 
+	case errors.Is(err, ErrRequestEntityTooLarge):
+		statusCode = fasthttp.StatusRequestEntityTooLarge
+
 	case errors.Is(err, ErrInternalServerError):
 		statusCode = fasthttp.StatusInternalServerError
 

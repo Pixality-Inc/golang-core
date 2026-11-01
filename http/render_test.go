@@ -83,6 +83,7 @@ func TestResponseRendererErrorMapping(t *testing.T) {
 		{"unauthorized", ErrUnauthorized, fasthttp.StatusUnauthorized},
 		{"forbidden", ErrForbidden, fasthttp.StatusForbidden},
 		{"payment required", ErrPaymentRequired, fasthttp.StatusPaymentRequired},
+		{"request entity too large", ErrRequestEntityTooLarge, fasthttp.StatusRequestEntityTooLarge},
 		{"internal", ErrInternalServerError, fasthttp.StatusInternalServerError},
 		{"unknown error", errRender, fasthttp.StatusInternalServerError},
 	}

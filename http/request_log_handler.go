@@ -48,7 +48,7 @@ func RequestLogHandler(originalHandler fasthttp.RequestHandler) fasthttp.Request
 			WithField("client_ip", clientIP).
 			WithField("status_code", statusCode).
 			WithField("response_time", requestTimeTracker.Duration().Milliseconds()).
-			WithField("response_bytes", len(ctx.Response.Body())).
+			WithField("response_bytes", responseBytes(ctx)).
 			WithField("logger", "router")
 
 		if requestMetadataError != nil {
@@ -83,4 +83,22 @@ func RequestLogHandler(originalHandler fasthttp.RequestHandler) fasthttp.Request
 				Error("Request failed")
 		}
 	}
+}
+
+// StreamedResponseBytes is what the log reports for a streamed body of an unknown size: it is
+// written after the handler returns
+const StreamedResponseBytes = -1
+
+// responseBytes reads the size of a buffered body, and the declared length of a streamed one:
+// Body() of a streamed response drains the whole stream into memory before the client gets a byte
+func responseBytes(ctx *fasthttp.RequestCtx) int {
+	if ctx.Response.IsBodyStream() {
+		if contentLength := ctx.Response.Header.ContentLength(); contentLength >= 0 {
+			return contentLength
+		}
+
+		return StreamedResponseBytes
+	}
+
+	return len(ctx.Response.Body())
 }
