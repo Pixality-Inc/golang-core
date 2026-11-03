@@ -81,6 +81,26 @@ func (mr *MockClientMockRecorder) Do(ctx, method, uri any, opts ...any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockClient)(nil).Do), varargs...)
 }
 
+// DoStream mocks base method.
+func (m *MockClient) DoStream(ctx context.Context, method, uri string, opts ...http_client.RequestOption) (http_client.StreamResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, method, uri}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DoStream", varargs...)
+	ret0, _ := ret[0].(http_client.StreamResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DoStream indicates an expected call of DoStream.
+func (mr *MockClientMockRecorder) DoStream(ctx, method, uri any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, method, uri}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoStream", reflect.TypeOf((*MockClient)(nil).DoStream), varargs...)
+}
+
 // Get mocks base method.
 func (m *MockClient) Get(ctx context.Context, uri string, opts ...http_client.RequestOption) (http_client.Response, error) {
 	m.ctrl.T.Helper()

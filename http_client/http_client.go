@@ -44,12 +44,14 @@ type Client interface {
 	Do(ctx context.Context, method, uri string, opts ...RequestOption) (Response, error)
 
 	GetStream(ctx context.Context, uri string, opts ...RequestOption) (StreamResponse, error)
+	DoStream(ctx context.Context, method, uri string, opts ...RequestOption) (StreamResponse, error)
 }
 
 type ClientImpl struct {
 	log            logger.Loggable
 	config         Config
 	client         *fasthttp.Client
+	streamClient   *http.Client
 	circuitBreaker circuit_breaker.CircuitBreaker
 }
 
@@ -103,6 +105,7 @@ func NewClientImpl(
 		log:            log,
 		config:         config,
 		client:         client,
+		streamClient:   newStreamClient(config, tlsConfig, streamConnectTimeout(config.Timeout())),
 		circuitBreaker: circuitBreaker,
 	}, nil
 }
@@ -319,7 +322,7 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 
-		c.logStreamRequest(ctx, url, statusCode, headers, nil, requestTimeTracker)
+		c.logStreamRequest(ctx, fasthttp.MethodGet, url, statusCode, headers, nil, requestTimeTracker)
 
 		errResp := &ResponseImpl{StatusCode: statusCode, Body: body}
 		_, statusErr := c.handleStatusCode(errResp)
@@ -334,7 +337,7 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 		headers[k] = append(headers[k], string(value))
 	}
 
-	c.logStreamRequest(ctx, url, statusCode, headers, nil, requestTimeTracker)
+	c.logStreamRequest(ctx, fasthttp.MethodGet, url, statusCode, headers, nil, requestTimeTracker)
 
 	body := &fasthttpStreamCloser{
 		reader: resp.BodyStream(),
@@ -351,6 +354,7 @@ func (c *ClientImpl) performStreamRequest(ctx context.Context, uri string, cfg *
 
 func (c *ClientImpl) logStreamRequest(
 	ctx context.Context,
+	method string,
 	url string,
 	statusCode int,
 	headers Headers,
@@ -363,7 +367,7 @@ func (c *ClientImpl) logStreamRequest(
 
 	fields := map[string]any{
 		"logger":         c.config.Name(),
-		"method":         fasthttp.MethodGet,
+		"method":         method,
 		"url":            url,
 		"stream":         true,
 		"success":        err == nil && statusCode >= 200 && statusCode < 300,

@@ -39,7 +39,8 @@ type Impl[T any] struct {
 	loader        LoaderFunction[T]
 	currentValue  T
 	lastRefreshAt time.Time
-	mutex         sync.Mutex
+	stateMutex    sync.RWMutex // guards currentValue and lastRefreshAt
+	mutex         sync.Mutex   // serializes loader calls
 }
 
 func New[T any](
@@ -60,6 +61,7 @@ func New[T any](
 		loader:        loader,
 		currentValue:  defaultValue,
 		lastRefreshAt: time.Time{},
+		stateMutex:    sync.RWMutex{},
 		mutex:         sync.Mutex{},
 	}
 }
@@ -77,17 +79,28 @@ func (p *Impl[T]) TTL() time.Duration {
 }
 
 func (p *Impl[T]) LastRefreshAt() time.Time {
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
+
 	return p.lastRefreshAt
 }
 
 func (p *Impl[T]) Value(ctx context.Context) (T, error) {
-	if !p.isExpired(clock.GetClock(ctx).Now()) {
-		return p.currentValue, nil
+	if value, ok := p.freshValue(ctx); ok {
+		return value, nil
 	}
 
-	newValue, err := p.Refresh(ctx)
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	// another caller may have refreshed the value while this one waited for the lock
+	if value, ok := p.freshValue(ctx); ok {
+		return value, nil
+	}
+
+	newValue, err := p.load(ctx)
 	if err != nil {
-		return p.defaultValue, errors.Join(ErrGetValue, err)
+		return p.defaultValue, errors.Join(ErrGetValue, errors.Join(ErrRefreshValue, err))
 	}
 
 	return newValue, nil
@@ -97,10 +110,23 @@ func (p *Impl[T]) Refresh(ctx context.Context) (T, error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	newValue, err := p.loader(ctx)
+	newValue, err := p.load(ctx)
 	if err != nil {
 		return p.defaultValue, errors.Join(ErrRefreshValue, err)
 	}
+
+	return newValue, nil
+}
+
+// load must be called with p.mutex held
+func (p *Impl[T]) load(ctx context.Context) (T, error) {
+	newValue, err := p.loader(ctx)
+	if err != nil {
+		return p.defaultValue, err
+	}
+
+	p.stateMutex.Lock()
+	defer p.stateMutex.Unlock()
 
 	p.currentValue = newValue
 	p.lastRefreshAt = clock.GetClock(ctx).Now()
@@ -108,6 +134,15 @@ func (p *Impl[T]) Refresh(ctx context.Context) (T, error) {
 	return newValue, nil
 }
 
-func (p *Impl[T]) isExpired(now time.Time) bool {
-	return now.After(p.lastRefreshAt.Add(p.ttl))
+func (p *Impl[T]) freshValue(ctx context.Context) (T, bool) {
+	now := clock.GetClock(ctx).Now()
+
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
+
+	if now.After(p.lastRefreshAt.Add(p.ttl)) {
+		return p.defaultValue, false
+	}
+
+	return p.currentValue, true
 }
