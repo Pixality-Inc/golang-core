@@ -8,6 +8,7 @@ var (
 	ErrUnauthorized        = errors.New("unauthorized")
 	ErrForbidden           = errors.New("forbidden")
 	ErrPaymentRequired     = errors.New("payment required")
+	ErrConflict            = errors.New("conflict")
 	ErrInternalServerError = errors.New("internal server error")
 
 	ErrRequestEntityTooLarge = errors.New("request entity too large")

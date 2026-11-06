@@ -83,6 +83,7 @@ func TestResponseRendererErrorMapping(t *testing.T) {
 		{"unauthorized", ErrUnauthorized, fasthttp.StatusUnauthorized},
 		{"forbidden", ErrForbidden, fasthttp.StatusForbidden},
 		{"payment required", ErrPaymentRequired, fasthttp.StatusPaymentRequired},
+		{"conflict", ErrConflict, fasthttp.StatusConflict},
 		{"request entity too large", ErrRequestEntityTooLarge, fasthttp.StatusRequestEntityTooLarge},
 		{"internal", ErrInternalServerError, fasthttp.StatusInternalServerError},
 		{"unknown error", errRender, fasthttp.StatusInternalServerError},
@@ -117,6 +118,7 @@ func TestResponseRendererErrorHelpers(t *testing.T) {
 		{func(ctx *fasthttp.RequestCtx) { renderer.Unauthorized(ctx, errRender) }, fasthttp.StatusUnauthorized},
 		{func(ctx *fasthttp.RequestCtx) { renderer.Forbidden(ctx, errRender) }, fasthttp.StatusForbidden},
 		{func(ctx *fasthttp.RequestCtx) { renderer.PaymentRequired(ctx, errRender) }, fasthttp.StatusPaymentRequired},
+		{func(ctx *fasthttp.RequestCtx) { renderer.Conflict(ctx, errRender) }, fasthttp.StatusConflict},
 		{func(ctx *fasthttp.RequestCtx) { renderer.InternalServerError(ctx, errRender) }, fasthttp.StatusInternalServerError},
 	}
 
@@ -154,6 +156,37 @@ func TestRenderResponseUnsupportedAccept(t *testing.T) {
 	renderer.Ok(ctx, wrapperspb.String("hello"))
 
 	assert.Empty(t, ctx.Response.Body())
+}
+
+func TestResponseRendererErrorUnsupportedAccept(t *testing.T) {
+	t.Parallel()
+
+	for _, accept := range []string{"text/event-stream", "application/xml", "text/event-stream;q=1, application/json;q=0"} {
+		t.Run(accept, func(t *testing.T) {
+			t.Parallel()
+
+			renderer := NewResponseRenderer(&testProtoRenderer{})
+			ctx := newRenderCtx(accept)
+
+			renderer.PaymentRequired(ctx, errRender)
+
+			assert.Equal(t, fasthttp.StatusPaymentRequired, ctx.Response.StatusCode())
+			assert.Equal(t, mediaTypeJSON, string(ctx.Response.Header.ContentType()))
+			assert.JSONEq(t, `"402: payment required\nrender test error"`, string(ctx.Response.Body()))
+		})
+	}
+}
+
+func TestResponseRendererErrorKnownAccept(t *testing.T) {
+	t.Parallel()
+
+	renderer := NewResponseRenderer(&testProtoRenderer{})
+	ctx := newRenderCtx("text/event-stream, " + mediaTypeProtobuf)
+
+	renderer.Forbidden(ctx, errRender)
+
+	assert.Equal(t, fasthttp.StatusForbidden, ctx.Response.StatusCode())
+	assert.Equal(t, mediaTypeProtobuf, string(ctx.Response.Header.ContentType()))
 }
 
 func TestReadBodyJson(t *testing.T) {
@@ -241,6 +274,8 @@ func TestPackageLevelHelpers(t *testing.T) {
 		{"forbidden with err", func(ctx *fasthttp.RequestCtx) { Forbidden(ctx, errRender) }, fasthttp.StatusForbidden},
 		{"payment required", func(ctx *fasthttp.RequestCtx) { PaymentRequired(ctx) }, fasthttp.StatusPaymentRequired},
 		{"payment required with err", func(ctx *fasthttp.RequestCtx) { PaymentRequired(ctx, errRender) }, fasthttp.StatusPaymentRequired},
+		{"conflict", func(ctx *fasthttp.RequestCtx) { Conflict(ctx) }, fasthttp.StatusConflict},
+		{"conflict with err", func(ctx *fasthttp.RequestCtx) { Conflict(ctx, errRender) }, fasthttp.StatusConflict},
 		{"internal", func(ctx *fasthttp.RequestCtx) { InternalServerError(ctx) }, fasthttp.StatusInternalServerError},
 		{"internal with err", func(ctx *fasthttp.RequestCtx) { InternalServerError(ctx, errRender) }, fasthttp.StatusInternalServerError},
 		{"error", func(ctx *fasthttp.RequestCtx) { Error(ctx, errRender) }, fasthttp.StatusInternalServerError},
@@ -357,4 +392,18 @@ func TestNewHttpResponseWithModelDefaults(t *testing.T) {
 	assert.Same(t, &model, response.Model())
 	assert.NotNil(t, response.Options())
 	assert.Empty(t, response.Options())
+}
+
+func TestResponseRendererConflictWrapped(t *testing.T) {
+	t.Parallel()
+
+	renderer := NewResponseRenderer(&testProtoRenderer{})
+	ctx := newRenderCtx(mediaTypeJSON)
+
+	err := fmt.Errorf("%w: version 3 is current", ErrConflict)
+
+	renderer.Error(ctx, err)
+
+	assert.Equal(t, fasthttp.StatusConflict, ctx.Response.StatusCode())
+	assert.JSONEq(t, `"409: conflict: version 3 is current"`, string(ctx.Response.Body()))
 }
