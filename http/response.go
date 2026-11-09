@@ -146,6 +146,16 @@ func PaymentRequired(ctx *fasthttp.RequestCtx, errs ...error) {
 	})
 }
 
+func Conflict(ctx *fasthttp.RequestCtx, errs ...error) {
+	withResponseRenderer(ctx, func(rr ResponseRenderer) {
+		if len(errs) > 0 {
+			rr.Conflict(ctx, errs[0])
+		} else {
+			rr.Conflict(ctx, nil)
+		}
+	})
+}
+
 func HandleHttp[T proto.Message](ctx *fasthttp.RequestCtx, response HttpResponse[T]) {
 	model := response.Model()
 	options := response.Options()
@@ -171,7 +181,26 @@ func renderResponse(ctx *fasthttp.RequestCtx, statusCode int, response proto.Mes
 		return fmt.Errorf("getting output format: %w", err)
 	}
 
-	var responseBytes []byte
+	return renderResponseAs(ctx, statusCode, response, format)
+}
+
+// renderErrorResponse renders an error even when the Accept of the client names no format the
+// renderer knows (text/event-stream of a streaming client): the status and a json body still tell
+// the client what went wrong, an empty 200 would read as a success
+func renderErrorResponse(ctx *fasthttp.RequestCtx, statusCode int, response proto.Message) error {
+	format, err := getOutputFormat(ctx)
+	if err != nil {
+		format = DataFormatJson
+	}
+
+	return renderResponseAs(ctx, statusCode, response, format)
+}
+
+func renderResponseAs(ctx *fasthttp.RequestCtx, statusCode int, response proto.Message, format dataFormatType) error {
+	var (
+		responseBytes []byte
+		err           error
+	)
 
 	var contentType string
 

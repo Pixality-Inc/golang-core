@@ -25,6 +25,7 @@ type ResponseRenderer interface {
 	Unauthorized(ctx *fasthttp.RequestCtx, err error)
 	Forbidden(ctx *fasthttp.RequestCtx, err error)
 	PaymentRequired(ctx *fasthttp.RequestCtx, err error)
+	Conflict(ctx *fasthttp.RequestCtx, err error)
 }
 
 type ResponseRendererImpl struct {
@@ -78,6 +79,9 @@ func (r *ResponseRendererImpl) Error(ctx *fasthttp.RequestCtx, err error) {
 	case errors.Is(err, ErrPaymentRequired):
 		statusCode = fasthttp.StatusPaymentRequired
 
+	case errors.Is(err, ErrConflict):
+		statusCode = fasthttp.StatusConflict
+
 	case errors.Is(err, ErrRequestEntityTooLarge):
 		statusCode = fasthttp.StatusRequestEntityTooLarge
 
@@ -89,7 +93,7 @@ func (r *ResponseRendererImpl) Error(ctx *fasthttp.RequestCtx, err error) {
 	}
 
 	errorMessage := r.protoRenderer.Error(statusCode, err)
-	if err := renderResponse(ctx, statusCode, errorMessage); err != nil {
+	if err := renderErrorResponse(ctx, statusCode, errorMessage); err != nil {
 		r.log.GetLogger(ctx).WithError(err).Error("output error")
 	}
 }
@@ -116,4 +120,8 @@ func (r *ResponseRendererImpl) Forbidden(ctx *fasthttp.RequestCtx, err error) {
 
 func (r *ResponseRendererImpl) PaymentRequired(ctx *fasthttp.RequestCtx, err error) {
 	r.Error(ctx, errors.Join(ErrPaymentRequired, err))
+}
+
+func (r *ResponseRendererImpl) Conflict(ctx *fasthttp.RequestCtx, err error) {
+	r.Error(ctx, errors.Join(ErrConflict, err))
 }
