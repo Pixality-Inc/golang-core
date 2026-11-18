@@ -88,6 +88,85 @@ func (mr *MockClientMockRecorder) GetString(ctx, key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetString", reflect.TypeOf((*MockClient)(nil).GetString), ctx, key)
 }
 
+// HDel mocks base method.
+func (m *MockClient) HDel(ctx context.Context, key string, fields ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, key}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "HDel", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HDel indicates an expected call of HDel.
+func (mr *MockClientMockRecorder) HDel(ctx, key any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, key}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HDel", reflect.TypeOf((*MockClient)(nil).HDel), varargs...)
+}
+
+// HGetAll mocks base method.
+func (m *MockClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HGetAll", ctx, key)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HGetAll indicates an expected call of HGetAll.
+func (mr *MockClientMockRecorder) HGetAll(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HGetAll", reflect.TypeOf((*MockClient)(nil).HGetAll), ctx, key)
+}
+
+// HIncrBy mocks base method.
+func (m *MockClient) HIncrBy(ctx context.Context, key, field string, increment int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HIncrBy", ctx, key, field, increment)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HIncrBy indicates an expected call of HIncrBy.
+func (mr *MockClientMockRecorder) HIncrBy(ctx, key, field, increment any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HIncrBy", reflect.TypeOf((*MockClient)(nil).HIncrBy), ctx, key, field, increment)
+}
+
+// HSet mocks base method.
+func (m *MockClient) HSet(ctx context.Context, key, field string, value any) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HSet", ctx, key, field, value)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HSet indicates an expected call of HSet.
+func (mr *MockClientMockRecorder) HSet(ctx, key, field, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HSet", reflect.TypeOf((*MockClient)(nil).HSet), ctx, key, field, value)
+}
+
+// HSetNX mocks base method.
+func (m *MockClient) HSetNX(ctx context.Context, key, field string, value any) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HSetNX", ctx, key, field, value)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HSetNX indicates an expected call of HSetNX.
+func (mr *MockClientMockRecorder) HSetNX(ctx, key, field, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HSetNX", reflect.TypeOf((*MockClient)(nil).HSetNX), ctx, key, field, value)
+}
+
 // IsConnected mocks base method.
 func (m *MockClient) IsConnected() bool {
 	m.ctrl.T.Helper()
@@ -100,6 +179,21 @@ func (m *MockClient) IsConnected() bool {
 func (mr *MockClientMockRecorder) IsConnected() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsConnected", reflect.TypeOf((*MockClient)(nil).IsConnected))
+}
+
+// PExpire mocks base method.
+func (m *MockClient) PExpire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PExpire", ctx, key, ttl)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PExpire indicates an expected call of PExpire.
+func (mr *MockClientMockRecorder) PExpire(ctx, key, ttl any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PExpire", reflect.TypeOf((*MockClient)(nil).PExpire), ctx, key, ttl)
 }
 
 // Publish mocks base method.

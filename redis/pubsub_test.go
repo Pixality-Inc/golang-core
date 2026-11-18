@@ -41,3 +41,29 @@ func TestPubSub_Close_NilInner(t *testing.T) {
 	err := ps.Close()
 	require.NoError(t, err, "Close() with nil inner pubsub should not error")
 }
+
+func TestPubSub_Subscribe_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	var ps *PubSub
+
+	require.ErrorIs(t, ps.Subscribe(t.Context(), "room"), ErrPubSubNotConnected)
+	require.ErrorIs(t, (&PubSub{}).Subscribe(t.Context(), "room"), ErrPubSubNotConnected)
+}
+
+func TestPubSub_Unsubscribe_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	var ps *PubSub
+
+	require.ErrorIs(t, ps.Unsubscribe(t.Context(), "room"), ErrPubSubNotConnected)
+	require.ErrorIs(t, (&PubSub{}).Unsubscribe(t.Context(), "room"), ErrPubSubNotConnected)
+}
+
+func TestPubSub_ChannelWithOptions_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	var ps *PubSub
+
+	require.Nil(t, ps.ChannelWithOptions(WithChannelSize(10)))
+}

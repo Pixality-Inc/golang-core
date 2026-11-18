@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -28,10 +29,36 @@ type Client interface {
 
 	SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 	Del(ctx context.Context, keys ...string) error
+
+	// HSet sets the field of the hash and reports whether the field is new
+	HSet(ctx context.Context, key string, field string, value any) (bool, error)
+	// HSetNX sets the field of the hash only when it is absent and reports whether it was set
+	HSetNX(ctx context.Context, key string, field string, value any) (bool, error)
+	// HIncrBy increments the integer field of the hash and returns the new value
+	HIncrBy(ctx context.Context, key string, field string, increment int64) (int64, error)
+	HGetAll(ctx context.Context, key string) (map[string]string, error)
+	HDel(ctx context.Context, key string, fields ...string) error
+
+	// PExpire sets the ttl of the key and reports whether the key exists
+	PExpire(ctx context.Context, key string, ttl time.Duration) (bool, error)
 }
 
+var ErrPubSubNotConnected = errors.New("redis subscription is not connected")
+
+// ChannelOption tunes the go channel of a subscription: WithChannelSize, WithChannelSendTimeout
+type ChannelOption = goredis.ChannelOption
+
+var (
+	// WithChannelSize sets the buffer of the go channel of a subscription (100 by default)
+	WithChannelSize = goredis.WithChannelSize
+	// WithChannelSendTimeout sets how long a message waits for a full channel before it is
+	// dropped (a minute by default)
+	WithChannelSendTimeout = goredis.WithChannelSendTimeout
+)
+
 type PubSub struct {
-	pubsub *goredis.PubSub
+	pubsub         *goredis.PubSub
+	circuitBreaker circuit_breaker.CircuitBreaker
 }
 
 func (p *PubSub) Channel() <-chan *Message {
@@ -40,6 +67,36 @@ func (p *PubSub) Channel() <-chan *Message {
 	}
 
 	return p.pubsub.Channel()
+}
+
+func (p *PubSub) ChannelWithOptions(opts ...ChannelOption) <-chan *Message {
+	if p == nil || p.pubsub == nil {
+		return nil
+	}
+
+	return p.pubsub.Channel(opts...)
+}
+
+// Subscribe adds channels to the subscription
+func (p *PubSub) Subscribe(ctx context.Context, channels ...string) error {
+	if p == nil || p.pubsub == nil {
+		return ErrPubSubNotConnected
+	}
+
+	return circuit_breaker.Execute(p.circuitBreaker, func() error {
+		return p.pubsub.Subscribe(ctx, channels...)
+	})
+}
+
+// Unsubscribe removes channels from the subscription, the subscription itself stays open
+func (p *PubSub) Unsubscribe(ctx context.Context, channels ...string) error {
+	if p == nil || p.pubsub == nil {
+		return ErrPubSubNotConnected
+	}
+
+	return circuit_breaker.Execute(p.circuitBreaker, func() error {
+		return p.pubsub.Unsubscribe(ctx, channels...)
+	})
 }
 
 func (p *PubSub) Close() error {
@@ -132,7 +189,10 @@ func (c *Impl) Subscribe(ctx context.Context, channels ...string) *PubSub {
 		return nil
 	}
 
-	return &PubSub{pubsub: c.client.Subscribe(ctx, channels...)}
+	return &PubSub{
+		pubsub:         c.client.Subscribe(ctx, channels...),
+		circuitBreaker: c.circuitBreaker,
+	}
 }
 
 func (c *Impl) Publish(ctx context.Context, channel string, message any) error {
@@ -163,6 +223,68 @@ func (c *Impl) Del(ctx context.Context, keys ...string) error {
 	return circuit_breaker.Execute(c.circuitBreaker, func() error {
 		return c.client.Del(ctx, keys...).Err()
 	})
+}
+
+func (c *Impl) HSet(ctx context.Context, key string, field string, value any) (bool, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return false, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
+		added, err := c.client.HSet(ctx, key, field, value).Result()
+
+		return added > 0, err
+	}, false)
+}
+
+func (c *Impl) HSetNX(ctx context.Context, key string, field string, value any) (bool, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return false, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
+		return c.client.HSetNX(ctx, key, field, value).Result()
+	}, false)
+}
+
+func (c *Impl) HIncrBy(ctx context.Context, key string, field string, increment int64) (int64, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return 0, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (int64, error) {
+		return c.client.HIncrBy(ctx, key, field, increment).Result()
+	}, 0)
+}
+
+func (c *Impl) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return nil, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (map[string]string, error) {
+		return c.client.HGetAll(ctx, key).Result()
+	}, nil)
+}
+
+func (c *Impl) HDel(ctx context.Context, key string, fields ...string) error {
+	if err := c.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	return circuit_breaker.Execute(c.circuitBreaker, func() error {
+		return c.client.HDel(ctx, key, fields...).Err()
+	})
+}
+
+func (c *Impl) PExpire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	if err := c.ensureConnected(ctx); err != nil {
+		return false, err
+	}
+
+	return circuit_breaker.ExecuteWithResult(c.circuitBreaker, func() (bool, error) {
+		return c.client.PExpire(ctx, key, ttl).Result()
+	}, false)
 }
 
 func (c *Impl) ensureConnected(_ context.Context) error {
