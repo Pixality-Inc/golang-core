@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	fasthttpWebsocket "github.com/fasthttp/websocket"
 	"github.com/pixality-inc/golang-core/logger"
@@ -25,6 +27,9 @@ type Impl[INP, OUT any] struct {
 	protocol         protocol2.Protocol[INP, OUT]
 	upgrader         fasthttpWebsocket.FastHTTPUpgrader
 	writeMessageType int
+	readLimit        int64
+	pingInterval     time.Duration
+	pongTimeout      time.Duration
 }
 
 func New[INP, OUT any](
@@ -43,6 +48,9 @@ func New[INP, OUT any](
 		protocol:         protocol,
 		upgrader:         serverOptions.upgrader,
 		writeMessageType: serverOptions.writeMessageType,
+		readLimit:        serverOptions.readLimit,
+		pingInterval:     serverOptions.pingInterval,
+		pongTimeout:      serverOptions.pongTimeout,
 	}
 
 	return server
@@ -92,6 +100,13 @@ func (s *Impl[INP, OUT]) handleConnection(
 	stopWatchingRequest := s.watchDone(ctx, done, websocketConnection, netConnection, cancel)
 	defer stopWatchingRequest()
 
+	if s.readLimit > 0 {
+		websocketConnection.SetReadLimit(s.readLimit)
+	}
+
+	extendReadDeadline, stopKeepAlive := s.keepAlive(ctx, websocketConnection)
+	defer stopKeepAlive()
+
 	connection := NewConnection(
 		coreNet.NewConnectionId(),
 		websocketConnection,
@@ -124,10 +139,24 @@ func (s *Impl[INP, OUT]) handleConnection(
 				return
 			}
 
+			if isTimeout(readErr) {
+				log.Debugf("websocket peer is silent past the keepalive timeout, closing")
+
+				return
+			}
+
+			if errors.Is(readErr, fasthttpWebsocket.ErrReadLimit) {
+				log.Debugf("websocket message exceeds the read limit, closing")
+
+				return
+			}
+
 			log.WithError(readErr).Errorf("failed to read websocket message")
 
 			return
 		}
+
+		extendReadDeadline()
 
 		if err = s.handleMessages(ctx, client, reader); err != nil {
 			log.WithError(err).Errorf("failed to read websocket message")
@@ -187,6 +216,72 @@ func (s *Impl[INP, OUT]) watchDone(
 	return func() {
 		close(ctxDone)
 	}
+}
+
+// keepAlive pings the peer and keeps the read deadline ahead while the peer answers. extend moves
+// the deadline after a message of the peer, stop ends the pings
+func (s *Impl[INP, OUT]) keepAlive(
+	ctx context.Context,
+	connection *fasthttpWebsocket.Conn,
+) (extend func(), stop func()) {
+	if s.pingInterval <= 0 || s.pongTimeout <= 0 {
+		return func() {}, func() {}
+	}
+
+	log := s.log.GetLogger(ctx)
+
+	extend = func() {
+		if err := connection.SetReadDeadline(time.Now().Add(s.pongTimeout)); err != nil {
+			log.WithError(err).Debugf("failed to extend websocket read deadline")
+		}
+	}
+
+	extend()
+
+	connection.SetPongHandler(func(_ string) error {
+		extend()
+
+		return nil
+	})
+
+	stopped := make(chan struct{})
+	finished := make(chan struct{})
+
+	go func() {
+		defer close(finished)
+
+		ticker := time.NewTicker(s.pingInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stopped:
+				return
+			case <-ticker.C:
+				if err := connection.WriteControl(
+					fasthttpWebsocket.PingMessage,
+					nil,
+					time.Now().Add(s.pingInterval),
+				); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// stop waits for the pinging goroutine: the connection is released once the handler returns
+	return extend, func() {
+		close(stopped)
+		<-finished
+	}
+}
+
+func isTimeout(err error) bool {
+	var timeoutErr interface{ Timeout() bool }
+
+	return errors.As(err, &timeoutErr) && timeoutErr.Timeout()
 }
 
 func isExpectedClose(err error) bool {

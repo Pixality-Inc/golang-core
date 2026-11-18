@@ -9,9 +9,18 @@ import (
 
 type Option func(*options)
 
+// message types of WithWriteMessageType
+const (
+	TextMessage   = fasthttpWebsocket.TextMessage
+	BinaryMessage = fasthttpWebsocket.BinaryMessage
+)
+
 type options struct {
 	upgrader         fasthttpWebsocket.FastHTTPUpgrader
 	writeMessageType int
+	readLimit        int64
+	pingInterval     time.Duration
+	pongTimeout      time.Duration
 }
 
 func WithCheckOrigin(checkOrigin func(ctx *fasthttp.RequestCtx) bool) Option {
@@ -53,6 +62,23 @@ func WithWriteBufferSize(size int) Option {
 func WithWriteMessageType(messageType int) Option {
 	return func(o *options) {
 		o.writeMessageType = messageType
+	}
+}
+
+// WithReadLimit limits the size of an incoming message in bytes: a larger one closes the connection
+// with CloseMessageTooBig
+func WithReadLimit(limit int64) Option {
+	return func(o *options) {
+		o.readLimit = limit
+	}
+}
+
+// WithKeepAlive pings the peer every pingInterval and closes the connection when nothing (a pong or
+// a message) comes from the peer within pongTimeout. pongTimeout is longer than pingInterval
+func WithKeepAlive(pingInterval time.Duration, pongTimeout time.Duration) Option {
+	return func(o *options) {
+		o.pingInterval = pingInterval
+		o.pongTimeout = pongTimeout
 	}
 }
 

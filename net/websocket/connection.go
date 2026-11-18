@@ -2,14 +2,39 @@ package websocket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	fasthttpWebsocket "github.com/fasthttp/websocket"
 	coreNet "github.com/pixality-inc/golang-core/net"
 	protocol2 "github.com/pixality-inc/golang-core/net/protocol"
 )
+
+// close codes of CloseWithCode, an application may use its own ones in 4000-4999
+const (
+	CloseNormalClosure     = fasthttpWebsocket.CloseNormalClosure
+	CloseGoingAway         = fasthttpWebsocket.CloseGoingAway
+	ClosePolicyViolation   = fasthttpWebsocket.ClosePolicyViolation
+	CloseMessageTooBig     = fasthttpWebsocket.CloseMessageTooBig
+	CloseInternalServerErr = fasthttpWebsocket.CloseInternalServerErr
+	CloseServiceRestart    = fasthttpWebsocket.CloseServiceRestart
+	CloseTryAgainLater     = fasthttpWebsocket.CloseTryAgainLater
+)
+
+// closeFrameWriteTimeout bounds the write of the close frame to a peer that does not read
+const closeFrameWriteTimeout = time.Second
+
+// Connection is the websocket connection a handler gets (as net.Connection)
+type Connection[OUT any] interface {
+	coreNet.Connection[OUT]
+
+	// CloseWithCode sends a close frame with the code and the reason (at most 123 bytes) and closes
+	// the connection: the peer sees the code in its close event
+	CloseWithCode(code int, reason string) error
+}
 
 type ConnectionImpl[INP, OUT any] struct {
 	id               coreNet.ConnectionId
@@ -27,7 +52,7 @@ func NewConnection[INP, OUT any](
 	netConnection net.Conn,
 	protocol protocol2.Protocol[INP, OUT],
 	writeMessageType int,
-) coreNet.Connection[OUT] {
+) Connection[OUT] {
 	return &ConnectionImpl[INP, OUT]{
 		id:               id,
 		connection:       connection,
@@ -74,6 +99,31 @@ func (c *ConnectionImpl[INP, OUT]) Close() error {
 	defer c.mutex.Unlock()
 
 	return closeConnection(c.connection, c.netConnection)
+}
+
+func (c *ConnectionImpl[INP, OUT]) CloseWithCode(code int, reason string) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	writeErr := c.connection.WriteControl(
+		fasthttpWebsocket.CloseMessage,
+		fasthttpWebsocket.FormatCloseMessage(code, reason),
+		time.Now().Add(closeFrameWriteTimeout),
+	)
+	if errors.Is(writeErr, fasthttpWebsocket.ErrCloseSent) {
+		writeErr = nil
+	}
+
+	closeErr := closeConnection(c.connection, c.netConnection)
+	if errors.Is(closeErr, net.ErrClosed) {
+		closeErr = nil
+	}
+
+	if writeErr != nil {
+		return fmt.Errorf("write close frame: %w", errors.Join(writeErr, closeErr))
+	}
+
+	return closeErr
 }
 
 func closeConnection(connection *fasthttpWebsocket.Conn, netConnection net.Conn) error {
