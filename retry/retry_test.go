@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -236,6 +237,52 @@ func TestCalculateBackoff_DifferentCoefficients(t *testing.T) {
 
 		result := CalculateBackoff(2, policy)
 		assert.Equal(t, 900*time.Millisecond, result)
+	})
+}
+
+func TestCalculateBackoff_PastTheDurationRange(t *testing.T) {
+	t.Parallel()
+
+	// 30s * 6^attempt passes the range of time.Duration from attempt 11 on
+	t.Run("capped by max interval", func(t *testing.T) {
+		t.Parallel()
+
+		policy := &PolicyImpl{
+			InitialIntervalValue:    30 * time.Second,
+			BackoffCoefficientValue: 6.0,
+			MaxIntervalValue:        7 * time.Minute,
+		}
+
+		for attempt := 2; attempt < 64; attempt++ {
+			assert.Equal(t, 7*time.Minute, CalculateBackoff(attempt, policy), "attempt %d", attempt)
+		}
+	})
+
+	t.Run("no max interval", func(t *testing.T) {
+		t.Parallel()
+
+		policy := &PolicyImpl{
+			InitialIntervalValue:    30 * time.Second,
+			BackoffCoefficientValue: 6.0,
+		}
+
+		assert.Equal(t, 30*time.Second*6*6*6*6*6*6*6*6*6*6, CalculateBackoff(10, policy))
+
+		for attempt := 11; attempt < 64; attempt++ {
+			assert.Equal(t, time.Duration(math.MaxInt64), CalculateBackoff(attempt, policy), "attempt %d", attempt)
+		}
+	})
+
+	t.Run("zero initial interval", func(t *testing.T) {
+		t.Parallel()
+
+		policy := &PolicyImpl{
+			BackoffCoefficientValue: 100.0,
+			MaxIntervalValue:        7 * time.Minute,
+		}
+
+		// 100^200 is infinite, and zero times infinity is not a number
+		assert.Equal(t, time.Duration(0), CalculateBackoff(200, policy))
 	})
 }
 

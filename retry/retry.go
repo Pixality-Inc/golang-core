@@ -84,8 +84,19 @@ func CalculateBackoff(attempt int, policy Policy) time.Duration {
 
 	backoff := float64(policy.InitialInterval()) * math.Pow(policy.BackoffCoefficient(), float64(attempt))
 
-	if policy.MaxInterval() > 0 && time.Duration(backoff) > policy.MaxInterval() {
+	// a zero initial interval times an infinite power
+	if math.IsNaN(backoff) {
+		return 0
+	}
+
+	// compared as a float: a backoff past the range of time.Duration has no defined
+	// conversion (amd64 turns it negative, so the attempt would not wait at all)
+	if policy.MaxInterval() > 0 && backoff > float64(policy.MaxInterval()) {
 		return policy.MaxInterval()
+	}
+
+	if backoff >= math.MaxInt64 {
+		return time.Duration(math.MaxInt64)
 	}
 
 	return time.Duration(backoff)
