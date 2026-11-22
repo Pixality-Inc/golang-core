@@ -9,57 +9,63 @@ import (
 	"go.temporal.io/sdk/interceptor"
 )
 
-// heartbeatsPerTimeout is how many heartbeats a running activity sends within its heartbeat timeout,
-// so that one heartbeat lost or late on the way is not taken for a lost worker
-const heartbeatsPerTimeout = 4
+const (
+	// heartbeatsPerTimeout is how often within its heartbeat timeout the worker records a heartbeat
+	// of a running activity. the sdk sends one at most every 0.8 of the timeout and at most every
+	// minute, so for a timeout of minutes every record is sent and a lost one is not taken for a
+	// lost worker
+	heartbeatsPerTimeout = 4
 
-// heartbeatInterceptor heartbeats the activities registered with a heartbeat timeout for as long as
-// they run. the timeout is how temporal notices a worker that is gone (killed, redeployed) long
-// before StartToClose, and an activity that waits out a storage outage for hours must not be taken
-// for a lost one. heartbeating here rather than in the activity code keeps the two from drifting
-// apart: a timeout set in config without a heartbeat in code would fail every attempt.
+	// minHeartbeatInterval keeps a mistyped timeout (1us) from turning the ticker into a busy loop.
+	// the sdk throttles the sends anyway
+	minHeartbeatInterval = 100 * time.Millisecond
+)
+
+// heartbeatWorkerInterceptor heartbeats a running activity when both the worker registered it
+// with a heartbeat timeout in its config and the activity was scheduled with one; the interval
+// follows the scheduled timeout. a scheduler that sets the timeout for an activity whose worker
+// neither opts in nor heartbeats itself fails every attempt longer than the timeout.
 //
-// the activity config of the worker opts in (an activity that heartbeats on its own progress keeps
-// doing so untouched), while the interval follows the timeout the activity was scheduled with, so a
-// scheduler whose config differs from the worker's still gets heartbeats in time, and none when it
-// set no timeout. the heartbeat tells that the worker is alive, not that the activity makes
-// progress, so a call hung inside it is still bounded by StartToClose only. it carries no details,
-// so it does not suit an activity that keeps its progress in heartbeat details
-type heartbeatInterceptor struct {
+// the heartbeat tells that the worker is alive, not that the activity makes progress: a call hung
+// inside it is bounded by StartToClose only. it carries no details and overwrites the ones the
+// activity recorded itself. through the heartbeat the sdk also cancels the activity: on a
+// cancellation, on a timed out attempt, and on a temporal frontend failing the heartbeat calls for
+// about the throttle interval
+type heartbeatWorkerInterceptor struct {
 	interceptor.WorkerInterceptorBase
 
 	// activity name -> struct{}, written on registration and read by every execution
 	activities sync.Map
 }
 
-func (i *heartbeatInterceptor) register(name ActivityName) {
+func (i *heartbeatWorkerInterceptor) register(name ActivityName) {
 	i.activities.Store(string(name), struct{}{})
 }
 
-func (i *heartbeatInterceptor) InterceptActivity(
+func (i *heartbeatWorkerInterceptor) InterceptActivity(
 	_ context.Context,
 	next interceptor.ActivityInboundInterceptor,
 ) interceptor.ActivityInboundInterceptor {
-	return &heartbeatActivityInterceptor{
+	return &heartbeatActivityInboundInterceptor{
 		ActivityInboundInterceptorBase: interceptor.ActivityInboundInterceptorBase{Next: next},
 		root:                           i,
 	}
 }
 
-type heartbeatActivityInterceptor struct {
+type heartbeatActivityInboundInterceptor struct {
 	interceptor.ActivityInboundInterceptorBase
 
-	root *heartbeatInterceptor
+	root *heartbeatWorkerInterceptor
 }
 
-func (a *heartbeatActivityInterceptor) ExecuteActivity(
+func (a *heartbeatActivityInboundInterceptor) ExecuteActivity(
 	ctx context.Context,
 	in *interceptor.ExecuteActivityInput,
 ) (any, error) {
 	info := activity.GetInfo(ctx)
 
 	if _, ok := a.root.activities.Load(info.ActivityType.Name); ok && info.HeartbeatTimeout > 0 {
-		stop := startHeartbeat(ctx, max(info.HeartbeatTimeout/heartbeatsPerTimeout, 1))
+		stop := startHeartbeat(ctx, max(info.HeartbeatTimeout/heartbeatsPerTimeout, minHeartbeatInterval))
 		defer stop()
 	}
 

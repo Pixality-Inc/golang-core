@@ -34,7 +34,7 @@ type WorkerImpl struct {
 	client     client.Client
 	worker     worker.Worker
 	identifier string
-	heartbeats *heartbeatInterceptor
+	heartbeats *heartbeatWorkerInterceptor
 }
 
 func NewWorker(
@@ -45,7 +45,8 @@ func NewWorker(
 	config WorkerConfig,
 	options ...WorkerOption,
 ) Worker {
-	heartbeats := &heartbeatInterceptor{}
+	heartbeats := &heartbeatWorkerInterceptor{}
+	workerOptions := newWorkerOptions(ctx, identifier, config, heartbeats, options)
 
 	return &WorkerImpl{
 		log: logger.NewLoggableImplWithServiceAndFields(
@@ -55,7 +56,7 @@ func NewWorker(
 			},
 		),
 		client:     client,
-		worker:     worker.New(client, queue, newWorkerOptions(ctx, identifier, config, heartbeats, options)),
+		worker:     worker.New(client, queue, workerOptions),
 		identifier: identifier,
 		heartbeats: heartbeats,
 	}
@@ -67,7 +68,7 @@ func newWorkerOptions(
 	ctx context.Context,
 	identifier string,
 	config WorkerConfig,
-	heartbeats *heartbeatInterceptor,
+	heartbeats *heartbeatWorkerInterceptor,
 	options []WorkerOption,
 ) worker.Options {
 	workerOptions := worker.Options{

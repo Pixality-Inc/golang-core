@@ -8,6 +8,11 @@ type (
 	ActivityName string
 )
 
+// ActivityConfig configures an activity. HeartbeatTimeout is the heartbeat timeout the activity is
+// scheduled with, and a non zero one on the worker that runs the activity turns on the heartbeat
+// sent by the worker itself, which overwrites the heartbeat details of the activity
+// (heartbeatWorkerInterceptor). ScheduleToCloseTimeout bounds all the attempts together. Zero is
+// none for both.
 type ActivityConfig struct {
 	Name                    ActivityName  `env:"NAME"                      yaml:"name"`
 	Queue                   QueueName     `env:"QUEUE"                     yaml:"queue"`

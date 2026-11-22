@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/mock/gomock"
 
@@ -276,6 +277,9 @@ func TestExecuteActivitySync_Timeouts(t *testing.T) {
 
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
+	// the workflow blocks on the activity, which a loaded runner may hold past the default deadlock
+	// detection
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: time.Minute})
 
 	activityImpl := temporal.NewActivityImpl(nil, temporal.ActivityConfig{
 		Name:                    "heartbeat-activity",
