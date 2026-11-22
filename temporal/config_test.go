@@ -15,6 +15,8 @@ func TestActivityConfig_Fields(t *testing.T) {
 		Name:                    "test-activity",
 		Queue:                   "test-queue",
 		Timeout:                 30 * time.Second,
+		HeartbeatTimeout:        2 * time.Minute,
+		ScheduleToCloseTimeout:  3 * time.Hour,
 		MaxAttempts:             5,
 		RetryInitialInterval:    2 * time.Second,
 		RetryBackoffCoefficient: 1.5,
@@ -24,6 +26,8 @@ func TestActivityConfig_Fields(t *testing.T) {
 	require.Equal(t, temporal.ActivityName("test-activity"), config.Name)
 	require.Equal(t, temporal.QueueName("test-queue"), config.Queue)
 	require.Equal(t, 30*time.Second, config.Timeout)
+	require.Equal(t, 2*time.Minute, config.HeartbeatTimeout)
+	require.Equal(t, 3*time.Hour, config.ScheduleToCloseTimeout)
 	require.Equal(t, 5, config.MaxAttempts)
 	require.Equal(t, 2*time.Second, config.RetryInitialInterval)
 	require.InEpsilon(t, 1.5, config.RetryBackoffCoefficient, 0.0)

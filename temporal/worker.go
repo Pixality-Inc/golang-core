@@ -34,6 +34,7 @@ type WorkerImpl struct {
 	client     client.Client
 	worker     worker.Worker
 	identifier string
+	heartbeats *heartbeatInterceptor
 }
 
 func NewWorker(
@@ -44,6 +45,31 @@ func NewWorker(
 	config WorkerConfig,
 	options ...WorkerOption,
 ) Worker {
+	heartbeats := &heartbeatInterceptor{}
+
+	return &WorkerImpl{
+		log: logger.NewLoggableImplWithServiceAndFields(
+			"temporal_worker",
+			logger.Fields{
+				logFieldName: config.Name,
+			},
+		),
+		client:     client,
+		worker:     worker.New(client, queue, newWorkerOptions(ctx, identifier, config, heartbeats, options)),
+		identifier: identifier,
+		heartbeats: heartbeats,
+	}
+}
+
+// newWorkerOptions puts the heartbeat interceptor after the options, so that an option setting
+// interceptors of its own does not drop it
+func newWorkerOptions(
+	ctx context.Context,
+	identifier string,
+	config WorkerConfig,
+	heartbeats *heartbeatInterceptor,
+	options []WorkerOption,
+) worker.Options {
 	workerOptions := worker.Options{
 		BackgroundActivityContext:          ctx,
 		Identity:                           identifier,
@@ -56,17 +82,9 @@ func NewWorker(
 		option(&workerOptions)
 	}
 
-	return &WorkerImpl{
-		log: logger.NewLoggableImplWithServiceAndFields(
-			"temporal_worker",
-			logger.Fields{
-				logFieldName: config.Name,
-			},
-		),
-		client:     client,
-		worker:     worker.New(client, queue, workerOptions),
-		identifier: identifier,
-	}
+	workerOptions.Interceptors = append(workerOptions.Interceptors, heartbeats)
+
+	return workerOptions
 }
 
 func (w *WorkerImpl) Run() error {
@@ -87,6 +105,10 @@ func (w *WorkerImpl) RegisterWorkflow(wf Workflow, runner WorkflowRunner) error 
 
 func (w *WorkerImpl) RegisterActivity(a Activity, runner ActivityRunner) error {
 	w.log.GetLoggerWithoutContext().Debugf("Registering activity %s (queue: %s)", a.Name(), a.Queue())
+
+	if a.HeartbeatTimeout() > 0 {
+		w.heartbeats.register(a.Name())
+	}
 
 	w.worker.RegisterActivityWithOptions(runner, activity.RegisterOptions{
 		Name: string(a.Name()),

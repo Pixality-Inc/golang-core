@@ -12,6 +12,8 @@ type ActivityConfig struct {
 	Name                    ActivityName  `env:"NAME"                      yaml:"name"`
 	Queue                   QueueName     `env:"QUEUE"                     yaml:"queue"`
 	Timeout                 time.Duration `env:"TIMEOUT"                   yaml:"timeout"`
+	HeartbeatTimeout        time.Duration `env:"HEARTBEAT_TIMEOUT"         yaml:"heartbeat_timeout"`
+	ScheduleToCloseTimeout  time.Duration `env:"SCHEDULE_TO_CLOSE_TIMEOUT" yaml:"schedule_to_close_timeout"`
 	MaxAttempts             int           `env:"MAX_ATTEMPTS"              yaml:"max_attempts"`
 	RetryInitialInterval    time.Duration `env:"RETRY_INITIAL_INTERVAL"    yaml:"retry_initial_interval"`
 	RetryBackoffCoefficient float64       `env:"RETRY_BACKOFF_COEFFICIENT" yaml:"retry_backoff_coefficient"`
