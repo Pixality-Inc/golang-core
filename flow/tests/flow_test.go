@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"testing"
 
@@ -25,7 +24,8 @@ const (
 	testCommandToRun         = "true"
 	testFailedCommandToRun   = "false"
 	testEchoCommandToRun     = "echo"
-	testMkdirCommandToRun    = "mkdir"
+	testStderrMessage        = "flow test error"
+	testStderrScript         = "printf '%s\\n' \"$1\" >&2; exit 1"
 	testPrintEnvCommandToRun = "printenv"
 )
 
@@ -256,11 +256,6 @@ func TestFlow(t *testing.T) {
 	}
 
 	defaultEnv := newDefaultEnv()
-
-	mkdirErrorMessage := "mkdir: cannot create directory ‘.’: File exists\n"
-	if runtime.GOOS == "darwin" {
-		mkdirErrorMessage = "mkdir: .: File exists\n"
-	}
 
 	testWorkDir := path.Join(os.TempDir(), "flow_test")
 	if err := os.MkdirAll(testWorkDir, os.ModePerm); err != nil {
@@ -549,7 +544,7 @@ func TestFlow(t *testing.T) {
 			name: "command_stderr",
 			actions: []flow.Action{
 				flow.NewAction("test").
-					WithCommand(testMkdirCommandToRun, ".").
+					WithCommand("sh", "-c", testStderrScript, "sh", testStderrMessage).
 					WithFailIfNonZeroCode(false),
 			},
 			env:                defaultEnv,
@@ -558,7 +553,7 @@ func TestFlow(t *testing.T) {
 			localStorageMock:   noLocalStorageMock,
 			wantResult: &flow.Result{
 				ActionsResponses: map[string]*flow.ActionResponse{
-					"test": flow.NewActionResponse().WithExitCode(1).WithStderr(mkdirErrorMessage),
+					"test": flow.NewActionResponse().WithExitCode(1).WithStderr(testStderrMessage + "\n"),
 				},
 			},
 			wantResultLen: 1,
@@ -655,7 +650,7 @@ func TestFlow(t *testing.T) {
 			name: "stderr_file",
 			actions: []flow.Action{
 				flow.NewAction("test").
-					WithCommand(testMkdirCommandToRun, ".").
+					WithCommand("sh", "-c", testStderrScript, "sh", testStderrMessage).
 					WithFailIfNonZeroCode(false).
 					WithStderr("stdout_file.error.txt"),
 			},
@@ -674,7 +669,7 @@ func TestFlow(t *testing.T) {
 
 				buf, err := os.ReadFile(path.Join(testWorkDir, "stdout_file.error.txt"))
 				require.NoError(t, err)
-				require.Equal(t, mkdirErrorMessage, string(buf))
+				require.Equal(t, testStderrMessage+"\n", string(buf))
 			},
 		},
 		{
@@ -707,7 +702,7 @@ func TestFlow(t *testing.T) {
 			name: "stderr_file_work_dir",
 			actions: []flow.Action{
 				flow.NewAction("test").
-					WithCommand(testMkdirCommandToRun, ".").
+					WithCommand("sh", "-c", testStderrScript, "sh", testStderrMessage).
 					WithWorkDir(testsAnotherWorkDir).
 					WithFailIfNonZeroCode(false).
 					WithStderr("stdout_file.error.txt"),
@@ -727,7 +722,7 @@ func TestFlow(t *testing.T) {
 
 				buf, err := os.ReadFile(path.Join(testsAnotherWorkDir, "stdout_file.error.txt"))
 				require.NoError(t, err)
-				require.Equal(t, mkdirErrorMessage, string(buf))
+				require.Equal(t, testStderrMessage+"\n", string(buf))
 			},
 		},
 		{

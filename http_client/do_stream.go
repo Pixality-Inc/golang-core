@@ -121,7 +121,7 @@ func (c *ClientImpl) newStreamRequest(ctx context.Context, method, url string, c
 
 	if c.config.UseRequestId() {
 		if requestId, ok := ctx.Value(http2.RequestIdValueKey).(string); ok && requestId != "" {
-			request.Header.Set("X-Request-Id", requestId)
+			request.Header.Set("X-Request-ID", requestId)
 		}
 	}
 

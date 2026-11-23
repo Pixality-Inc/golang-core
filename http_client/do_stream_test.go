@@ -25,6 +25,7 @@ const (
 func writeTestChunk(t *testing.T, w http.ResponseWriter, chunk string) {
 	t.Helper()
 
+	//nolint:gosec // The test server writes controlled fixtures or the parsed HTTP protocol version.
 	if _, err := w.Write([]byte(chunk)); err != nil {
 		t.Logf("test response write: %v", err)
 	}

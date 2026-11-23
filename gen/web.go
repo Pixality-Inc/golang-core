@@ -52,6 +52,10 @@ func (g *Gen) generateWeb(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 			operationType := operationEntry.Operation
 			operation := operationEntry.Route
 
+			if err := operation.validateRequestBody(); err != nil {
+				return fmt.Errorf("%s %s: %w", operationType, routeUrl, err)
+			}
+
 			var (
 				parametersModelName string
 				responseModel       string
@@ -532,10 +536,25 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 					}
 				}
 
+				if method.Operation.requiresRequestBody() {
+					routerGen = append(routerGen, []byte(`
+  if len(ctx.Request.Body()) == 0 {
+    http.HandleError(ctx, fmt.Errorf("%w: request body is required", http.ErrBadRequest))
+
+    return
+  }
+`)...)
+				}
+
 				if method.Operation.RequestModel != "" {
+					bodyGuard := "  {"
+					if !method.Operation.requiresRequestBody() {
+						bodyGuard = "  if len(ctx.Request.Body()) > 0 {"
+					}
+
 					routerGen = append(routerGen, '\n')
 
-					routerGen = append(routerGen, []byte(fmt.Sprintf(`  {
+					routerGen = append(routerGen, []byte(fmt.Sprintf(`%s
     var request %s
 
     if err := http.ReadBody(ctx, &request); err != nil {
@@ -546,7 +565,7 @@ func handleWithController(controller controllers.Controller, handler func(ctx *f
 
     params.Request = &request
   }
-`, method.Operation.RequestModel))...)
+`, bodyGuard, method.Operation.RequestModel))...)
 				}
 
 				if method.Operation.RawBody {

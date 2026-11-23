@@ -26,27 +26,25 @@ import (
 // with a drifting clock gets and a later attempt does not. A permission error of a socket
 // (connect: operation not permitted, a dropped connection) is a network failure, not a refusal.
 //
-// The s3 status is read with errors.As for the reason given at IsNotFound.
+// The s3 status is read with errors.AsType for the reason given at IsNotFound.
 func IsRejected(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	var response minio.ErrorResponse
-	if errors.As(err, &response) {
+	if response, ok := errors.AsType[minio.ErrorResponse](err); ok {
 		return response.Code != minio.RequestTimeTooSkewed && isRejectedStatus(response.StatusCode)
 	}
 
-	var apiErr *googleapi.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*googleapi.Error](err); ok {
 		return isRejectedStatus(apiErr.Code)
 	}
 
 	// the os provider fails an open or a create with a path error, while a socket fails with an
 	// op error around the same errno
-	var pathErr *fs.PathError
+	pathErr, ok := errors.AsType[*fs.PathError](err)
 
-	return errors.As(err, &pathErr) && errors.Is(pathErr.Err, fs.ErrPermission)
+	return ok && errors.Is(pathErr.Err, fs.ErrPermission)
 }
 
 func isRejectedStatus(status int) bool {
