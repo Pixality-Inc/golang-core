@@ -257,20 +257,40 @@ type ApiRouteParameterEntry struct {
 }
 
 type ApiRoute struct {
-	Id             string                       `json:"id"             yaml:"id"`
-	Hidden         bool                         `json:"hidden"         yaml:"hidden"`
-	Tags           []string                     `json:"tags"           yaml:"tags"`
-	Title          string                       `json:"title"          yaml:"title"`
-	Description    string                       `json:"description"    yaml:"description"`
-	Security       []string                     `json:"security"       yaml:"security"`
-	AuthRequired   bool                         `json:"authRequired"   yaml:"authRequired"`
-	IsHttp         bool                         `json:"http"           yaml:"http"`
-	Parameters     map[string]ApiRouteParameter `json:"parameters"     yaml:"parameters"`
-	RequestFiles   []ApiRouteRequestFile        `json:"requestFiles"   yaml:"requestFiles"`
-	RequestModel   string                       `json:"requestModel"   yaml:"requestModel"`
-	ResponseModels []string                     `json:"responseModels" yaml:"responseModels"`
-	RawBody        bool                         `json:"rawBody"        yaml:"rawBody"`
-	RawHeaders     bool                         `json:"rawHeaders"     yaml:"rawHeaders"`
+	Id                  string                       `json:"id"             yaml:"id"`
+	Hidden              bool                         `json:"hidden"         yaml:"hidden"`
+	Tags                []string                     `json:"tags"           yaml:"tags"`
+	Title               string                       `json:"title"          yaml:"title"`
+	Description         string                       `json:"description"    yaml:"description"`
+	Security            []string                     `json:"security"       yaml:"security"`
+	AuthRequired        bool                         `json:"authRequired"   yaml:"authRequired"`
+	IsHttp              bool                         `json:"http"           yaml:"http"`
+	Parameters          map[string]ApiRouteParameter `json:"parameters"     yaml:"parameters"`
+	RequestFiles        []ApiRouteRequestFile        `json:"requestFiles"   yaml:"requestFiles"`
+	RequestModel        string                       `json:"requestModel"   yaml:"requestModel"`
+	RequestBodyRequired *bool                        `json:"requestBodyRequired" yaml:"requestBodyRequired"`
+	ResponseModels      []string                     `json:"responseModels" yaml:"responseModels"`
+	RawBody             bool                         `json:"rawBody"        yaml:"rawBody"`
+	RawHeaders          bool                         `json:"rawHeaders"     yaml:"rawHeaders"`
+}
+
+var errRequiredBodyWithoutDefinition = errors.New("requestBodyRequired requires requestModel, requestFiles or rawBody")
+
+func (ar *ApiRoute) validateRequestBody() error {
+	if ar.RequestBodyRequired != nil && *ar.RequestBodyRequired &&
+		ar.RequestModel == "" && len(ar.RequestFiles) == 0 && !ar.RawBody {
+		return errRequiredBodyWithoutDefinition
+	}
+
+	return nil
+}
+
+func (ar *ApiRoute) requiresRequestBody() bool {
+	if ar.RequestBodyRequired != nil {
+		return *ar.RequestBodyRequired
+	}
+
+	return ar.RequestModel != ""
 }
 
 func (ar *ApiRoute) GetParameters() []ApiRouteParameterEntry {
@@ -875,6 +895,10 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 			routeOperation := operationEntry.Operation
 			operation := operationEntry.Route
 
+			if err := operation.validateRequestBody(); err != nil {
+				return fmt.Errorf("%s %s: %w", routeOperation, routeUri, err)
+			}
+
 			if operation.Hidden {
 				continue
 			}
@@ -1008,6 +1032,10 @@ func (g *Gen) generateApi(ctx context.Context, apiSchema *ApiSchema, apiEnums Ap
 						Description: "Raw Body",
 					},
 				}
+			}
+
+			if pathOperation.RequestBody != nil {
+				pathOperation.RequestBody.Value.Required = operation.requiresRequestBody()
 			}
 
 			var responses []openapi3.NewResponsesOption
