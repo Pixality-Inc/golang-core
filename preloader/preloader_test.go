@@ -161,13 +161,9 @@ func TestPreloaderConcurrentExpiredValueLoadsOnce(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := range callers {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			values[i], errs[i] = preloader.Value(ctx)
-		}()
+		})
 	}
 
 	close(release)
@@ -198,33 +194,41 @@ func TestPreloaderConcurrentValueAndRefresh(t *testing.T) {
 
 	var wg sync.WaitGroup
 
+	// Each worker reports at most one error to the test goroutine.
+	errs := make(chan error, 8+2)
+
 	for range 8 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for range 200 {
 				_, err := preloader.Value(ctx)
-				require.NoError(t, err)
+				if err != nil {
+					errs <- err
+
+					return
+				}
 
 				_ = preloader.LastRefreshAt()
 			}
-		}()
+		})
 	}
 
 	for range 2 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			for range 100 {
 				_, err := preloader.Refresh(ctx)
-				require.NoError(t, err)
+				if err != nil {
+					errs <- err
+
+					return
+				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }

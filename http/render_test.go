@@ -171,6 +171,7 @@ func TestResponseRendererErrorUnsupportedAccept(t *testing.T) {
 			renderer.PaymentRequired(ctx, errRender)
 
 			assert.Equal(t, fasthttp.StatusPaymentRequired, ctx.Response.StatusCode())
+			//nolint:testifylint // Content-Type is a media type, so compare the header literally.
 			assert.Equal(t, mediaTypeJSON, string(ctx.Response.Header.ContentType()))
 			assert.JSONEq(t, `"402: payment required\nrender test error"`, string(ctx.Response.Body()))
 		})
