@@ -15,6 +15,8 @@ func TestActivity(t *testing.T) {
 		Name:                    "my-activity",
 		Queue:                   "my-queue",
 		Timeout:                 time.Minute,
+		HeartbeatTimeout:        2 * time.Minute,
+		ScheduleToCloseTimeout:  3 * time.Hour,
 		MaxAttempts:             3,
 		RetryInitialInterval:    time.Second,
 		RetryBackoffCoefficient: 2.0,
@@ -26,6 +28,8 @@ func TestActivity(t *testing.T) {
 	require.Equal(t, temporal.ActivityName("my-activity"), activity.Name())
 	require.Equal(t, temporal.QueueName("my-queue"), activity.Queue())
 	require.Equal(t, time.Minute, activity.Timeout())
+	require.Equal(t, 2*time.Minute, activity.HeartbeatTimeout())
+	require.Equal(t, 3*time.Hour, activity.ScheduleToCloseTimeout())
 	require.Equal(t, 3, activity.MaxAttempts())
 	require.Equal(t, time.Second, activity.RetryInitialInterval())
 	require.InEpsilon(t, 2.0, activity.RetryBackoffCoefficient(), 0.0)

@@ -41,6 +41,20 @@ func (m *MockActivity) EXPECT() *MockActivityMockRecorder {
 	return m.recorder
 }
 
+// HeartbeatTimeout mocks base method.
+func (m *MockActivity) HeartbeatTimeout() time.Duration {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HeartbeatTimeout")
+	ret0, _ := ret[0].(time.Duration)
+	return ret0
+}
+
+// HeartbeatTimeout indicates an expected call of HeartbeatTimeout.
+func (mr *MockActivityMockRecorder) HeartbeatTimeout() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeartbeatTimeout", reflect.TypeOf((*MockActivity)(nil).HeartbeatTimeout))
+}
+
 // MaxAttempts mocks base method.
 func (m *MockActivity) MaxAttempts() int {
 	m.ctrl.T.Helper()
@@ -123,6 +137,20 @@ func (m *MockActivity) RetryMaximumInterval() time.Duration {
 func (mr *MockActivityMockRecorder) RetryMaximumInterval() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetryMaximumInterval", reflect.TypeOf((*MockActivity)(nil).RetryMaximumInterval))
+}
+
+// ScheduleToCloseTimeout mocks base method.
+func (m *MockActivity) ScheduleToCloseTimeout() time.Duration {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScheduleToCloseTimeout")
+	ret0, _ := ret[0].(time.Duration)
+	return ret0
+}
+
+// ScheduleToCloseTimeout indicates an expected call of ScheduleToCloseTimeout.
+func (mr *MockActivityMockRecorder) ScheduleToCloseTimeout() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScheduleToCloseTimeout", reflect.TypeOf((*MockActivity)(nil).ScheduleToCloseTimeout))
 }
 
 // Timeout mocks base method.

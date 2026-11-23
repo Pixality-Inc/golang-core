@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/mock/gomock"
 
@@ -268,4 +270,48 @@ func TestExecuteActivitySync_Error(t *testing.T) {
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.Error(t, env.GetWorkflowError())
+}
+
+func TestExecuteActivitySync_Timeouts(t *testing.T) {
+	t.Parallel()
+
+	testSuite := &testsuite.WorkflowTestSuite{}
+	env := testSuite.NewTestWorkflowEnvironment()
+	// the workflow blocks on the activity, which a loaded runner may hold past the default deadlock
+	// detection
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: time.Minute})
+
+	activityImpl := temporal.NewActivityImpl(nil, temporal.ActivityConfig{
+		Name:                    "heartbeat-activity",
+		Queue:                   "test-queue",
+		Timeout:                 time.Hour,
+		HeartbeatTimeout:        5 * time.Minute,
+		ScheduleToCloseTimeout:  2 * time.Hour,
+		MaxAttempts:             1,
+		RetryInitialInterval:    time.Second,
+		RetryBackoffCoefficient: 2.0,
+		RetryMaximumInterval:    time.Minute,
+	})
+
+	runner := func(ctx context.Context, _ string) ([]time.Duration, error) {
+		info := activity.GetInfo(ctx)
+
+		return []time.Duration{info.StartToCloseTimeout, info.HeartbeatTimeout, info.ScheduleToCloseTimeout}, nil
+	}
+
+	wrapper := temporal.NewActivityTypedWrapper(activityImpl, runner)
+
+	env.RegisterActivityWithOptions(runner, activity.RegisterOptions{Name: "heartbeat-activity"})
+
+	env.ExecuteWorkflow(func(ctx workflow.Context) ([]time.Duration, error) {
+		return temporal.ExecuteActivitySync(ctx, wrapper, nil, "test-input")
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var timeouts []time.Duration
+
+	require.NoError(t, env.GetWorkflowResult(&timeouts))
+	require.Equal(t, []time.Duration{time.Hour, 5 * time.Minute, 2 * time.Hour}, timeouts)
 }

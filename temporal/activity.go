@@ -14,6 +14,8 @@ type Activity interface {
 	Name() ActivityName
 	Queue() QueueName
 	Timeout() time.Duration
+	HeartbeatTimeout() time.Duration
+	ScheduleToCloseTimeout() time.Duration
 	MaxAttempts() int
 	RetryInitialInterval() time.Duration
 	RetryBackoffCoefficient() float64
@@ -64,6 +66,14 @@ func (a *ActivityImpl) Queue() QueueName {
 
 func (a *ActivityImpl) Timeout() time.Duration {
 	return a.config.Timeout
+}
+
+func (a *ActivityImpl) HeartbeatTimeout() time.Duration {
+	return a.config.HeartbeatTimeout
+}
+
+func (a *ActivityImpl) ScheduleToCloseTimeout() time.Duration {
+	return a.config.ScheduleToCloseTimeout
 }
 
 func (a *ActivityImpl) MaxAttempts() int {

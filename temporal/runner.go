@@ -155,8 +155,10 @@ func ExecuteActivitySync[IN any, OUT any](
 
 func getActivityCtx[IN any, OUT any](ctx workflow.Context, activityWrapper *ActivityTypedWrapper[IN, OUT]) workflow.Context {
 	activityOptions := workflow.ActivityOptions{
-		TaskQueue:           string(activityWrapper.activity.Queue()),
-		StartToCloseTimeout: activityWrapper.activity.Timeout(),
+		TaskQueue:              string(activityWrapper.activity.Queue()),
+		ScheduleToCloseTimeout: activityWrapper.activity.ScheduleToCloseTimeout(),
+		StartToCloseTimeout:    activityWrapper.activity.Timeout(),
+		HeartbeatTimeout:       activityWrapper.activity.HeartbeatTimeout(),
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts:    int32(activityWrapper.activity.MaxAttempts()), //nolint:gosec
 			InitialInterval:    activityWrapper.activity.RetryInitialInterval(),
