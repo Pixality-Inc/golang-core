@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,11 +26,28 @@ import (
 // All parts of a multipart upload except the very last one must be >= MinPartSize.
 const MinPartSize int64 = 16 * 1024 * 1024
 
-// DefaultUploadPartSize is the default part size used by PutObject for auto-multipart.
-const DefaultUploadPartSize int64 = 64 * 1024 * 1024
+// DefaultUploadPartSize is the part size Upload uses for an object larger than it. Upload raises it
+// for an object of a known length that does not fit maxUploadParts parts of it; a stream of an
+// unknown length fits maxUploadParts parts, 156 GiB, a longer one fails with ErrUploadStreamTooLong.
+const DefaultUploadPartSize int64 = 16 * 1024 * 1024
 
-// DefaultUploadConcurrency is the default number of concurrent parts uploaded.
-const DefaultUploadConcurrency = 4
+// DefaultUploadConcurrency is the most parts Upload sends at once. measured on r2 with 1 GiB:
+// 16 MiB x 8 99 MiB/s, 16 MiB x 4 53, 64 MiB x 4 64, parts one by one 15-32. for a body read in
+// order (a stream, a minio object) minio-go takes one buffer of threads x part size up front, 128 MiB
+// with the defaults, a stream also keeps up to uploadPeekSize read ahead until its first part is
+// read; a file or another ReaderAt of a known length is sent in sections of itself without buffers.
+const DefaultUploadConcurrency = 8
+
+// maxUploadParts is the s3 limit of parts in one multipart upload
+const maxUploadParts int64 = 10000
+
+// uploadPeekSize is how much of a stream of unknown length Upload reads ahead: a stream that ends
+// within it goes as one PUT of a known length, a longer one as a multipart upload
+const uploadPeekSize = DefaultUploadPartSize
+
+// readAheadSmallSize is how much of a stream is read ahead into a growing buffer before the buffer
+// for the whole peek is taken
+const readAheadSmallSize = 1024 * 1024
 
 // MaxSingleCopySize is the maximum object size for a single server-side PUT-copy (CopyObject). S3
 // caps the copy source at 5 GiB; larger sources must be copied with a server-side multipart copy
@@ -56,6 +74,14 @@ var ErrEmptyEndpoint = errors.New("s3: empty endpoint")
 // minio-go cannot use directly: unsupported scheme, or a URL carrying a
 // path / query / fragment that we would otherwise have to silently drop.
 var ErrInvalidEndpoint = errors.New("s3: invalid endpoint")
+
+// ErrUploadSizeMismatch is returned by Upload when the object came out of another size than the
+// source said it had; the object is removed.
+var ErrUploadSizeMismatch = errors.New("s3: uploaded size does not match the source")
+
+// ErrUploadStreamTooLong is returned by Upload when a stream of an unknown length did not fit
+// maxUploadParts parts: minio-go completes the object without the rest, so it is removed.
+var ErrUploadStreamTooLong = errors.New("s3: stream is longer than a multipart upload takes")
 
 type Client interface {
 	Close()
@@ -201,18 +227,242 @@ func (c *Impl) Upload(ctx context.Context, objectName string, file io.Reader) er
 		return fmt.Errorf("failed to get metadata for %q: %w", objectFullName, err)
 	}
 
+	source, err := newUploadSource(file)
+	if err != nil {
+		return fmt.Errorf("s3: upload '%s': %w", objectFullName, err)
+	}
+
+	partSize := uploadPartSize(source.size)
+
 	opts := minio.PutObjectOptions{
 		ContentType:     metadata.ContentType(),
 		ContentEncoding: metadata.ContentEncoding(),
-		PartSize:        uint64(DefaultUploadPartSize),
-		NumThreads:      uint(DefaultUploadConcurrency),
+		PartSize:        uint64(partSize), //nolint:gosec // uploadPartSize is never below DefaultUploadPartSize
+		NumThreads:      uploadThreads(source.size, partSize),
+		// a body minio-go can read only in order goes in parallel parts only with this, through
+		// buffers; a ReaderAt of a known length is sent in parallel sections of itself without it.
+		// it must not meet TrailingHeaders or a checksum option: in minio-go v7.1.0 the parts of
+		// this path share one hasher.
+		ConcurrentStreamParts: source.inOrder,
 	}
 
-	if _, err := c.client.PutObject(ctx, c.bucketName, objectFullName, file, -1, opts); err != nil {
+	info, err := c.client.PutObject(ctx, c.bucketName, objectFullName, source.body, source.size, opts)
+	if err != nil {
+		return fmt.Errorf("s3: upload '%s': %w", objectFullName, err)
+	}
+
+	if err := source.check(info.Size); err != nil {
+		if removeErr := c.client.RemoveObject(ctx, c.bucketName, objectFullName, minio.RemoveObjectOptions{}); removeErr != nil {
+			log.WithError(removeErr).Errorf("failed to remove the incomplete object '%s'", objectFullName)
+		}
+
 		return fmt.Errorf("s3: upload '%s': %w", objectFullName, err)
 	}
 
 	return nil
+}
+
+// uploadPartSize is DefaultUploadPartSize, raised for an object of a known length that does not
+// fit maxUploadParts parts of it
+func uploadPartSize(size int64) int64 {
+	if size > DefaultUploadPartSize*maxUploadParts {
+		return (size + maxUploadParts - 1) / maxUploadParts
+	}
+
+	return DefaultUploadPartSize
+}
+
+// uploadThreads is DefaultUploadConcurrency, cut to the number of parts of an object of a known
+// length: a 17 MiB object read in order takes buffers for its 2 parts, not for 8
+func uploadThreads(size, partSize int64) uint {
+	if size < 0 {
+		return DefaultUploadConcurrency
+	}
+
+	parts := (size + partSize - 1) / partSize
+
+	return uint(max(1, min(parts, DefaultUploadConcurrency)))
+}
+
+// uploadSource is the body Upload hands to minio-go. minio-go sends an object of a known length up
+// to the part size in one PUT, of an unknown length always as a multipart upload (create, part,
+// complete) with a part size buffer, which made small objects about 1.7 times slower on r2. so the
+// length is taken from the readers that can tell it and a stream is read ahead up to
+// uploadPeekSize to learn whether it is small.
+type uploadSource struct {
+	body io.Reader
+	// size is -1 while the length is unknown
+	size int64
+	// inOrder marks a body minio-go can read only from its start to its end
+	inOrder bool
+}
+
+func newUploadSource(file io.Reader) (uploadSource, error) {
+	if source, ok := sizedSource(file); ok {
+		return source, nil
+	}
+
+	// one byte over the peek tells a stream of exactly uploadPeekSize from a longer one
+	head, ended, err := readAhead(file, uploadPeekSize+1)
+	if err != nil {
+		return uploadSource{}, fmt.Errorf("read ahead: %w", err)
+	}
+
+	if ended {
+		return uploadSource{body: bytes.NewReader(head), size: int64(len(head))}, nil
+	}
+
+	return uploadSource{body: io.MultiReader(bytes.NewReader(head), cutTailReader{file}), size: -1, inOrder: true}, nil
+}
+
+// cutTailReader keeps a cut stream an error for minio-go: it reads the parts of a stream with a
+// readFull that takes io.ErrUnexpectedEOF for a short last part and completes the object without
+// the rest, while a wrapped one aborts the upload
+type cutTailReader struct {
+	io.Reader
+}
+
+func (r cutTailReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return n, fmt.Errorf("stream cut: %w", err)
+	}
+
+	return n, err //nolint:wrapcheck // io.EOF must stay as is
+}
+
+// check compares what minio-go reports as uploaded with the source: a known length must match, a
+// stream must be drained, minio-go stops a stream after maxUploadParts parts and completes the
+// object without the rest
+func (s uploadSource) check(uploaded int64) error {
+	if s.size >= 0 {
+		if uploaded != s.size {
+			return fmt.Errorf("%w: %d bytes of %d", ErrUploadSizeMismatch, uploaded, s.size)
+		}
+
+		return nil
+	}
+
+	var probe [1]byte
+
+	n, err := io.ReadFull(s.body, probe[:])
+	if n > 0 {
+		return fmt.Errorf("%w: more than %d bytes", ErrUploadStreamTooLong, uploaded)
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("check the end of the stream: %w", err)
+	}
+
+	return nil
+}
+
+// sizedSource takes the length of a reader that can tell it. minio-go retries a request by seeking
+// its body to 0 and reads a ReaderAt at absolute offsets, so a reader already read past its start
+// is cut to a section that begins at the current offset.
+func sizedSource(file io.Reader) (uploadSource, bool) {
+	if object, ok := file.(*minio.Object); ok {
+		return objectSource(object)
+	}
+
+	readerAt, isReaderAt := file.(io.ReaderAt)
+	seeker, isSeeker := file.(io.Seeker)
+
+	if !isReaderAt || !isSeeker {
+		return uploadSource{}, false
+	}
+
+	total, ok := readerSize(file)
+	if !ok {
+		return uploadSource{}, false
+	}
+
+	offset, err := seeker.Seek(0, io.SeekCurrent)
+	if err != nil || offset < 0 || offset > total {
+		return uploadSource{}, false
+	}
+
+	if offset == 0 {
+		return uploadSource{body: file, size: total}, true
+	}
+
+	return uploadSource{body: io.NewSectionReader(readerAt, offset, total-offset), size: total - offset}, true
+}
+
+// objectSource hands a minio object to minio-go as the *minio.Object itself: minio-go reads that in
+// order with one GET, while anything else that is a ReaderAt it reads by ReadAt, and every ReadAt of
+// an object is a ranged GET of its own. the length is the Content-Length of the HEAD Download sent
+// with the same Accept-Encoding as the GET. an object read past its start goes the way of a stream.
+func objectSource(object *minio.Object) (uploadSource, bool) {
+	info, err := object.Stat()
+	if err != nil || info.Size < 0 {
+		return uploadSource{}, false
+	}
+
+	offset, err := object.Seek(0, io.SeekCurrent)
+	if err != nil || offset != 0 {
+		return uploadSource{}, false
+	}
+
+	return uploadSource{body: object, size: info.Size, inOrder: true}, true
+}
+
+// readerSize is the whole length of the readers that report it: bytes.Reader, strings.Reader and
+// io.SectionReader by Size, a regular os.File by its stat
+func readerSize(file io.Reader) (int64, bool) {
+	switch reader := file.(type) {
+	case interface{ Size() int64 }:
+		return reader.Size(), true
+
+	case *os.File:
+		info, err := reader.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			return 0, false
+		}
+
+		return info.Size(), true
+	}
+
+	return 0, false
+}
+
+// readAhead reads a stream up to limit bytes and reports whether it ended within them. the first
+// readAheadSmallSize go through a growing buffer, so a small stream costs about its own size; a
+// longer one is read into one buffer of limit bytes instead of a buffer doubling up to twice of it.
+// only io.EOF ends a stream: io.ErrUnexpectedEOF of a source is a cut body (net/http reports so a
+// response shorter than its Content-Length) and fails the upload.
+func readAhead(file io.Reader, limit int64) ([]byte, bool, error) {
+	var small bytes.Buffer
+
+	// one byte over the small size tells a stream of exactly that size from a longer one
+	smallLimit := min(readAheadSmallSize+1, limit)
+
+	read, err := io.CopyN(&small, file, smallLimit)
+	if errors.Is(err, io.EOF) {
+		return small.Bytes(), true, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+
+	if read == limit {
+		return small.Bytes(), false, nil
+	}
+
+	head := make([]byte, limit)
+	copy(head, small.Bytes())
+
+	for read < limit {
+		n, err := file.Read(head[read:])
+		read += int64(n)
+
+		if errors.Is(err, io.EOF) {
+			return head[:read], true, nil
+		} else if err != nil {
+			return nil, false, err
+		}
+	}
+
+	return head, false, nil
 }
 
 func (c *Impl) UploadFile(ctx context.Context, objectName string, filename string) error {
